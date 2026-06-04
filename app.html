@@ -427,6 +427,10 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       כל החניכים
     </div>
+    <div class="nav-item" data-view="syllabus" onclick="navigate('syllabus')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      סילבוס הקורס
+    </div>
     <div class="nav-item" data-view="profile" onclick="navigate('profile')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       פרופיל אישי
@@ -488,6 +492,15 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
 <!-- TRAINEE DETAIL VIEW -->
 <div id="view-trainee" class="view">
   <div id="trainee-detail-content"></div>
+</div>
+
+<!-- SYLLABUS VIEW -->
+<div id="view-syllabus" class="view">
+  <div class="page-header">
+    <div><div class="page-title">סילבוס הקורס</div><div class="page-sub">מסלול הלימודים ומעקב התקדמות</div></div>
+    <button class="btn btn-primary" id="btn-upload-syllabus" onclick="openSyllabusUpload()" style="display:none">📅 עדכן סילבוס</button>
+  </div>
+  <div id="syllabus-content"></div>
 </div>
 
 <!-- PROFILE VIEW -->
@@ -609,6 +622,7 @@ const SUPABASE_URL = 'https://qvyzxqoatcpshgfzshxd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2eXp4cW9hdGNwc2hnZnpzaHhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NjQzNjksImV4cCI6MjA5NjE0MDM2OX0.Q1k-lBqafWscmW1-NW6uPcOhxh38jDXBmud6nMV66EE';
 const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let _dataCache = null;
+let _syllabusCache = null; // {rows:[{date,topic,details}], uploadedAt}
 
 const _emptyScores = () => ({
   motivation:    Array(4).fill(null).map(()=>[null,null]),
@@ -753,15 +767,25 @@ let isDark = true;
 async function loadDataFromSupabase(){
   const {data, error} = await _sb.from('trainees').select('data').eq('id',0).single();
   if(error){ console.error('Load error:',error); return INITIAL_TRAINEES; }
+  _syllabusCache = data?.data?.syllabus || null;
   const arr = data?.data?.trainees;
   if(arr && arr.length > 0) return arr;
-  await saveDataToSupabase(INITIAL_TRAINEES);
+  await saveAllToSupabase(INITIAL_TRAINEES, null);
   return INITIAL_TRAINEES;
 }
 
-async function saveDataToSupabase(arr){
-  const {error} = await _sb.from('trainees').upsert({id:0, data:{trainees:arr}});
+async function saveAllToSupabase(traineesArr, syllabus){
+  const {error} = await _sb.from('trainees').upsert({id:0, data:{trainees:traineesArr, syllabus:syllabus}});
   if(error) console.error('Save error:',error);
+}
+
+async function saveDataToSupabase(arr){
+  await saveAllToSupabase(arr, _syllabusCache);
+}
+
+async function saveSyllabus(syllabus){
+  _syllabusCache = syllabus;
+  await saveAllToSupabase(_dataCache, syllabus);
 }
 
 function getData(){ return _dataCache || []; }
@@ -811,8 +835,10 @@ function refreshCurrentView(){
 function startRealtime(){
   _sb.channel('trainees-rt')
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'trainees'},payload=>{
-      const arr = payload.new?.data?.trainees;
-      if(arr){ _dataCache=arr; refreshCurrentView(); }
+      const d = payload.new?.data;
+      if(d?.trainees){ _dataCache=d.trainees; }
+      if(d?.syllabus !== undefined){ _syllabusCache=d.syllabus; }
+      refreshCurrentView();
     })
     .subscribe();
 }
@@ -912,6 +938,7 @@ function navigate(view, traineeId){
   else if(view==='trainees') renderTraineesTable();
   else if(view==='trainee' && traineeId) renderTraineeDetail(traineeId, false);
   else if(view==='profile') renderProfile();
+  else if(view==='syllabus') renderSyllabus();
   window.scrollTo(0,0);
 }
 
@@ -949,6 +976,7 @@ async function initApp(){
   document.getElementById('btn-add-trainee').style.display=canSeeAll?'':'none';
   document.getElementById('btn-export-all').style.display=canSeeAll?'':'none';
   document.getElementById('btn-import').style.display=canSeeAll?'':'none';
+  document.getElementById('btn-upload-syllabus').style.display=canSeeAll?'':'none';
   const nlEl=document.getElementById('nav-trainee-links');
   if(canSeeAll){
     nlEl.style.display='block';
@@ -1960,6 +1988,191 @@ async function exportSingleTrainee(id){
   }catch(err){ console.error(err); showToast('שגיאה בייצוא: '+err.message,'error'); }
 }
 
+
+// ============================================================
+// SYLLABUS
+// ============================================================
+
+function parseDate(str){
+  if(!str) return null;
+  // Support DD/MM/YYYY, DD.MM.YYYY, YYYY-MM-DD
+  str = String(str).trim();
+  let m;
+  if((m=str.match(/^(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{4})$/)))
+    return new Date(+m[3], +m[2]-1, +m[1]);
+  if((m=str.match(/^(\d{4})-(\d{2})-(\d{2})$/)))
+    return new Date(+m[1], +m[2]-1, +m[3]);
+  // Excel serial date number
+  const n = parseFloat(str);
+  if(!isNaN(n) && n > 1000){
+    const d = new Date((n - 25569) * 86400 * 1000);
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  }
+  return null;
+}
+
+function formatDate(d){
+  if(!d) return '';
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+
+function dayLabel(d){
+  const days=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+  return `יום ${days[d.getDay()]}`;
+}
+
+function renderSyllabus(){
+  const el = document.getElementById('syllabus-content');
+  const canEdit = currentUser && (currentUser.role==='instructor'||currentUser.role==='manager');
+
+  if(!_syllabusCache || !_syllabusCache.rows || !_syllabusCache.rows.length){
+    el.innerHTML = `<div class="empty-state">
+      <div class="es-icon">📅</div>
+      <h3>סילבוס לא הועלה עדיין</h3>
+      <p>${canEdit?'לחץ על "עדכן סילבוס" להעלאת קובץ Excel עם מסלול הקורס':'הסילבוס טרם הועלה על ידי המדריך'}</p>
+    </div>`;
+    return;
+  }
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const rows = _syllabusCache.rows;
+  const total = rows.length;
+  const pastCount = rows.filter(r=>{ const d=parseDate(r.date); return d&&d<today; }).length;
+  const todayRow = rows.find(r=>{ const d=parseDate(r.date); return d&&d.getTime()===today.getTime(); });
+  const pct = Math.round(pastCount/total*100);
+
+  let html = `
+    <div class="card" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:var(--text)">התקדמות הקורס</div>
+          <div style="font-size:13px;color:var(--text2);margin-top:2px">${pastCount} מתוך ${total} ימי לימוד | ${pct}% הושלמו</div>
+        </div>
+        <div style="font-size:28px;font-weight:900;color:var(--primary-light)">${pct}%</div>
+      </div>
+      <div class="progress-bar" style="height:14px">
+        <div class="progress-fill pf-blue" style="width:${pct}%"></div>
+      </div>
+      ${todayRow?`<div style="margin-top:14px;padding:12px 16px;background:rgba(247,183,50,.1);border:1px solid rgba(247,183,50,.3);border-radius:var(--r2)">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:4px">📌 נושא היום — ${formatDate(parseDate(todayRow.date))}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text)">${todayRow.topic}</div>
+        ${todayRow.details?`<div style="font-size:13px;color:var(--text2);margin-top:4px">${todayRow.details}</div>`:''}
+      </div>`:''}
+    </div>
+    <div class="card">
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:16px">מסלול הלימודים</div>
+      <div style="display:flex;flex-direction:column;gap:0">`;
+
+  rows.forEach((r,i)=>{
+    const d = parseDate(r.date);
+    const isPast = d && d < today;
+    const isToday = d && d.getTime()===today.getTime();
+    const isFuture = d && d > today;
+    const color = isToday?'var(--accent)':isPast?'var(--success)':'var(--text3)';
+    const bg = isToday?'rgba(247,183,50,.08)':isPast?'rgba(46,204,113,.04)':'transparent';
+    const border = isToday?'2px solid rgba(247,183,50,.4)':'1px solid var(--border)';
+    html+=`<div style="display:flex;align-items:flex-start;gap:16px;padding:12px 16px;background:${bg};border:${border};border-radius:var(--r2);margin-bottom:6px">
+      <div style="flex-shrink:0;text-align:center;min-width:48px">
+        <div style="font-size:18px;font-weight:900;color:${color}">${i+1}</div>
+        <div style="font-size:10px;color:var(--text3)">${d?dayLabel(d):''}</div>
+      </div>
+      <div style="flex:1">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:2px">${d?formatDate(d):''} ${isToday?'<span style="font-size:11px;font-weight:700;color:var(--accent)">← היום</span>':''}</div>
+        <div style="font-size:15px;font-weight:700;color:${isToday?'var(--accent)':isPast?'var(--text)':'var(--text2)'}">${r.topic||''}</div>
+        ${r.details?`<div style="font-size:12px;color:var(--text3);margin-top:3px">${r.details}</div>`:''}
+      </div>
+      <div style="flex-shrink:0">${isPast?'✅':isToday?'📌':'⏳'}</div>
+    </div>`;
+  });
+
+  html += `</div></div>`;
+  el.innerHTML = html;
+}
+
+function openSyllabusUpload(){
+  const html=`<div class="modal-overlay" id="syllabus-modal" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:600px;width:100%">
+      <h3>📅 העלאת סילבוס הקורס</h3>
+      <div class="alert alert-info" style="margin-bottom:16px">
+        העלה קובץ Excel עם שתי עמודות: <strong>תאריך</strong> (DD/MM/YYYY) ו<strong>נושא</strong>. עמודת <strong>פרטים</strong> — אופציונלית.
+      </div>
+      <div class="form-group">
+        <label>קובץ Excel / CSV</label>
+        <input type="file" id="syllabus-file" accept=".xlsx,.xls,.csv" class="edit-input" onchange="parseSyllabusFile(event)">
+      </div>
+      <div id="syllabus-preview"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="document.getElementById('syllabus-modal').remove()">ביטול</button>
+        <button class="btn btn-primary" id="syllabus-confirm-btn" onclick="confirmSyllabusUpload()" style="display:none">✅ שמור סילבוס</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+let _pendingSyllabus = null;
+
+function parseSyllabusFile(e){
+  const file=e.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const data=new Uint8Array(ev.target.result);
+    const wb=XLSX.read(data,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    if(!rows.length){ showToast('הקובץ ריק','error'); return; }
+
+    // Try to detect header row
+    const firstRow = rows[0].map(h=>String(h).trim().toLowerCase());
+    const hasHeader = firstRow.some(h=>h.includes('תאריך')||h.includes('נושא')||h.includes('date')||h.includes('topic'));
+    const dataRows = hasHeader ? rows.slice(1) : rows;
+
+    // Auto-detect columns: date (col with parseable date), topic (text col)
+    let dateCol=0, topicCol=1, detailsCol=2;
+
+    // Find date column
+    for(let c=0;c<Math.min(5,dataRows[0]?.length||0);c++){
+      if(parseDate(dataRows[0][c])){ dateCol=c; break; }
+    }
+    // Topic = first non-date text column
+    topicCol = dateCol===0?1:0;
+
+    _pendingSyllabus = dataRows
+      .map(r=>({
+        date: formatDate(parseDate(r[dateCol])) || String(r[dateCol]||'').trim(),
+        topic: String(r[topicCol]||'').trim(),
+        details: r.length>2 ? String(r[detailsCol]||'').trim() : ''
+      }))
+      .filter(r=>r.topic);
+
+    const previewEl=document.getElementById('syllabus-preview');
+    previewEl.innerHTML=`
+      <div style="font-size:13px;color:var(--text2);margin-bottom:10px">נמצאו <strong style="color:var(--text)">${_pendingSyllabus.length}</strong> ימי לימוד</div>
+      <div class="table-wrap" style="max-height:260px;overflow-y:auto">
+      <table class="score-table">
+        <thead><tr><th>#</th><th>תאריך</th><th>נושא</th><th>פרטים</th></tr></thead>
+        <tbody>
+          ${_pendingSyllabus.slice(0,10).map((r,i)=>`<tr>
+            <td>${i+1}</td><td>${r.date}</td>
+            <td><strong>${r.topic}</strong></td>
+            <td style="color:var(--text2)">${r.details||'—'}</td>
+          </tr>`).join('')}
+          ${_pendingSyllabus.length>10?`<tr><td colspan="4" style="text-align:center;color:var(--text3)">... ועוד ${_pendingSyllabus.length-10} שורות</td></tr>`:''}
+        </tbody>
+      </table></div>`;
+    document.getElementById('syllabus-confirm-btn').style.display='';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function confirmSyllabusUpload(){
+  if(!_pendingSyllabus?.length){ showToast('לא נמצאו נתונים','warn'); return; }
+  await saveSyllabus({rows:_pendingSyllabus, uploadedAt:new Date().toISOString()});
+  document.getElementById('syllabus-modal').remove();
+  showToast(`✓ הסילבוס הועלה — ${_pendingSyllabus.length} ימי לימוד`,'success');
+  _pendingSyllabus=null;
+  renderSyllabus();
+}
 
 // ============================================================
 // IMPORT DATA
