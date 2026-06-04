@@ -2090,14 +2090,19 @@ function renderSyllabus(){
 }
 
 function openSyllabusUpload(){
+  const today = formatDate(new Date());
   const html=`<div class="modal-overlay" id="syllabus-modal" onclick="if(event.target===this)this.remove()">
-    <div class="modal" style="max-width:600px;width:100%">
+    <div class="modal" style="max-width:640px;width:100%">
       <h3>📅 העלאת סילבוס הקורס</h3>
       <div class="alert alert-info" style="margin-bottom:16px">
-        העלה קובץ Excel עם שתי עמודות: <strong>תאריך</strong> (DD/MM/YYYY) ו<strong>נושא</strong>. עמודת <strong>פרטים</strong> — אופציונלית.
+        ניתן להעלות את קובץ הסילבוס המקורי מרכז ההדרכה (עם גיליונות מודולים) — האפליקציה תחלץ את הנתונים אוטומטית.
       </div>
       <div class="form-group">
-        <label>קובץ Excel / CSV</label>
+        <label>תאריך יום 1 של הקורס</label>
+        <input type="text" id="syllabus-start-date" class="edit-input" placeholder="DD/MM/YYYY" value="${today}" style="max-width:180px">
+      </div>
+      <div class="form-group">
+        <label>קובץ סילבוס Excel</label>
         <input type="file" id="syllabus-file" accept=".xlsx,.xls,.csv" class="edit-input" onchange="parseSyllabusFile(event)">
       </div>
       <div id="syllabus-preview"></div>
@@ -2112,52 +2117,96 @@ function openSyllabusUpload(){
 
 let _pendingSyllabus = null;
 
+function isRailSyllabus(wb){
+  // Detect the Israel Railways multi-sheet syllabus format
+  const skip=['נתוני הקורס','תבנית','גיליון נתונים','גיליון נתונים_פילוח שעות לימוד','גיליון1','גיליון2'];
+  const relevant = wb.SheetNames.filter(n=>!skip.includes(n.trim()));
+  if(relevant.length < 5) return false;
+  // Check if first relevant sheet has "יום" pattern in col A
+  const ws = wb.Sheets[relevant[0]];
+  const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  return rows.some(r=>String(r[0]||'').match(/יום\s*\d+/));
+}
+
+function parseRailSyllabus(wb, startDateStr){
+  const skip=['נתוני הקורס','תבנית','גיליון נתונים','גיליון נתונים_פילוח שעות לימוד','גיליון1','גיליון2'];
+  const dayMap={};
+  for(const sheetName of wb.SheetNames){
+    if(skip.includes(sheetName.trim())) continue;
+    const ws=wb.Sheets[sheetName];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    let currentDay=null;
+    for(const row of rows){
+      const col1=String(row[0]||'').trim();
+      const col4=String(row[3]||'').trim();
+      const m=col1.match(/יום\s*(\d+)/);
+      if(m){
+        currentDay=parseInt(m[1]);
+        if(!dayMap[currentDay]) dayMap[currentDay]={module:sheetName.trim(),lessons:[]};
+      }
+      if(currentDay!==null&&col4&&col4!=='הפסקה'&&col4!=='ארוחת צהריים'&&
+         !col4.includes('שם השיעור')&&dayMap[currentDay].lessons.length<4&&
+         !dayMap[currentDay].lessons.includes(col4)){
+        dayMap[currentDay].lessons.push(col4);
+      }
+    }
+  }
+  // Map day numbers to real dates (skip Fri/Sat)
+  const parts=startDateStr.split('/');
+  let cur=new Date(+parts[2],+parts[1]-1,+parts[0]);
+  const sorted=Object.keys(dayMap).map(Number).sort((a,b)=>a-b);
+  return sorted.map(dayNum=>{
+    while(cur.getDay()===5||cur.getDay()===6) cur=new Date(cur.getTime()+86400000);
+    const dateStr=formatDate(cur);
+    cur=new Date(cur.getTime()+86400000);
+    return {date:dateStr, topic:dayMap[dayNum].module, details:dayMap[dayNum].lessons.join(' | ')};
+  });
+}
+
 function parseSyllabusFile(e){
   const file=e.target.files[0]; if(!file) return;
   const reader=new FileReader();
   reader.onload=ev=>{
     const data=new Uint8Array(ev.target.result);
     const wb=XLSX.read(data,{type:'array'});
-    const ws=wb.Sheets[wb.SheetNames[0]];
-    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-    if(!rows.length){ showToast('הקובץ ריק','error'); return; }
+    const startDate=document.getElementById('syllabus-start-date')?.value||formatDate(new Date());
 
-    // Try to detect header row
-    const firstRow = rows[0].map(h=>String(h).trim().toLowerCase());
-    const hasHeader = firstRow.some(h=>h.includes('תאריך')||h.includes('נושא')||h.includes('date')||h.includes('topic'));
-    const dataRows = hasHeader ? rows.slice(1) : rows;
-
-    // Auto-detect columns: date (col with parseable date), topic (text col)
-    let dateCol=0, topicCol=1, detailsCol=2;
-
-    // Find date column
-    for(let c=0;c<Math.min(5,dataRows[0]?.length||0);c++){
-      if(parseDate(dataRows[0][c])){ dateCol=c; break; }
+    if(isRailSyllabus(wb)){
+      // Multi-sheet railway format
+      _pendingSyllabus=parseRailSyllabus(wb,startDate);
+    } else {
+      // Simple date+topic format
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      if(!rows.length){ showToast('הקובץ ריק','error'); return; }
+      const firstRow=rows[0].map(h=>String(h).trim());
+      const hasHeader=firstRow.some(h=>h.includes('תאריך')||h.includes('נושא'));
+      const dataRows=hasHeader?rows.slice(1):rows;
+      let dateCol=0,topicCol=1,detailsCol=2;
+      for(let c=0;c<Math.min(5,dataRows[0]?.length||0);c++){
+        if(parseDate(dataRows[0][c])){ dateCol=c; break; }
+      }
+      topicCol=dateCol===0?1:0;
+      _pendingSyllabus=dataRows
+        .map(r=>({date:formatDate(parseDate(r[dateCol]))||String(r[dateCol]||'').trim(),
+          topic:String(r[topicCol]||'').trim(),
+          details:r.length>2?String(r[detailsCol]||'').trim():''}))
+        .filter(r=>r.topic);
     }
-    // Topic = first non-date text column
-    topicCol = dateCol===0?1:0;
-
-    _pendingSyllabus = dataRows
-      .map(r=>({
-        date: formatDate(parseDate(r[dateCol])) || String(r[dateCol]||'').trim(),
-        topic: String(r[topicCol]||'').trim(),
-        details: r.length>2 ? String(r[detailsCol]||'').trim() : ''
-      }))
-      .filter(r=>r.topic);
 
     const previewEl=document.getElementById('syllabus-preview');
     previewEl.innerHTML=`
-      <div style="font-size:13px;color:var(--text2);margin-bottom:10px">נמצאו <strong style="color:var(--text)">${_pendingSyllabus.length}</strong> ימי לימוד</div>
-      <div class="table-wrap" style="max-height:260px;overflow-y:auto">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:10px">זוהו <strong style="color:var(--text)">${_pendingSyllabus.length}</strong> ימי לימוד</div>
+      <div class="table-wrap" style="max-height:240px;overflow-y:auto">
       <table class="score-table">
         <thead><tr><th>#</th><th>תאריך</th><th>נושא</th><th>פרטים</th></tr></thead>
         <tbody>
-          ${_pendingSyllabus.slice(0,10).map((r,i)=>`<tr>
+          ${_pendingSyllabus.slice(0,8).map((r,i)=>`<tr>
             <td>${i+1}</td><td>${r.date}</td>
             <td><strong>${r.topic}</strong></td>
-            <td style="color:var(--text2)">${r.details||'—'}</td>
+            <td style="color:var(--text2);font-size:11px">${r.details||'—'}</td>
           </tr>`).join('')}
-          ${_pendingSyllabus.length>10?`<tr><td colspan="4" style="text-align:center;color:var(--text3)">... ועוד ${_pendingSyllabus.length-10} שורות</td></tr>`:''}
+          ${_pendingSyllabus.length>8?`<tr><td colspan="4" style="text-align:center;color:var(--text3)">... ועוד ${_pendingSyllabus.length-8} ימים</td></tr>`:''}
         </tbody>
       </table></div>`;
     document.getElementById('syllabus-confirm-btn').style.display='';
