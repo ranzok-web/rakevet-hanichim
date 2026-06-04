@@ -775,8 +775,13 @@ async function loadDataFromSupabase(){
 }
 
 async function saveAllToSupabase(traineesArr, syllabus){
-  const {error} = await _sb.from('trainees').upsert({id:0, data:{trainees:traineesArr, syllabus:syllabus}});
-  if(error) console.error('Save error:',error);
+  const {error} = await _sb.from('trainees')
+    .update({data:{trainees:traineesArr, syllabus:syllabus}})
+    .eq('id', 0);
+  if(error){
+    console.error('Save error:',error);
+    showToast('שגיאה בשמירה: '+error.message,'error');
+  }
 }
 
 async function saveDataToSupabase(arr){
