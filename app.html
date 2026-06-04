@@ -1853,10 +1853,12 @@ function sanitizeSheetName(name){
   return name.slice(0,31).replace(/[:/\\?*\[\]]/g,'');
 }
 
+function b64ToUint8Array(b64){const bin=atob(b64);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return arr;}
+
 async function generateExcelInBrowser(trainees){
-  const resp=await fetch(TEMPLATE_URL);
-  if(!resp.ok) throw new Error('לא ניתן לטעון את קובץ התבנית');
-  const buf=await resp.arrayBuffer();
+  const buf=b64ToUint8Array(TEMPLATE_B64).buffer;
+
+
 
   const origZip=await JSZip.loadAsync(buf);
   const wbXml=await origZip.file('xl/workbook.xml').async('text');
