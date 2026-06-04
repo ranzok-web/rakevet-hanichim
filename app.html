@@ -1,0 +1,1855 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מערכת ניהול ביצועי חניך | הכשרת נהגי משא</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --primary:#003B8E; --primary-dark:#002670; --primary-light:#1A5BC4;
+  --accent:#F7B732; --danger:#E31E24; --success:#2ECC71; --warn:#FFC107;
+  --bg:#0F1629; --bg-card:#1A2540; --bg-input:#101828; --bg-hover:#1E2D54;
+  --text:#E8EDF5; --text2:#8FA3C8; --text3:#5F7499;
+  --border:#253355; --shadow:rgba(0,0,0,.45);
+  --hdr:#0A1030; --side:#0D1835;
+  --font:'Heebo',sans-serif; --r:10px; --r2:6px; --tr:.2s ease;
+}
+[data-theme=light]{
+  --bg:#EEF1F9; --bg-card:#fff; --bg-input:#F5F7FC; --bg-hover:#E5EAFA;
+  --text:#1A2540; --text2:#4A5E80; --text3:#8FA3C8;
+  --border:#D5DCEA; --shadow:rgba(0,0,0,.1);
+  --hdr:#003B8E; --side:#fff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;transition:background var(--tr),color var(--tr)}
+.hidden{display:none!important}
+a{color:inherit;text-decoration:none}
+button{cursor:pointer;font-family:var(--font)}
+input,textarea,select{font-family:var(--font)}
+
+/* ===== LOGIN ===== */
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#050D24 0%,#0D1E4A 50%,#0A1535 100%)}
+.login-card{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;
+  padding:48px 40px;width:100%;max-width:420px;box-shadow:0 20px 60px var(--shadow)}
+.login-logo{text-align:center;margin-bottom:32px}
+.login-logo .rail-logo{display:inline-flex;align-items:center;gap:12px;
+  background:var(--primary);border-radius:10px;padding:12px 20px;margin-bottom:12px}
+.login-logo .rail-logo svg{width:36px;height:36px}
+.login-logo .logo-text{font-size:13px;color:var(--text2);line-height:1.6}
+.login-logo h2{font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px}
+.login-title{text-align:center;margin-bottom:28px}
+.login-title h1{font-size:22px;font-weight:800;color:var(--text);margin-bottom:6px}
+.login-title p{font-size:13px;color:var(--text2)}
+.form-group{margin-bottom:18px}
+.form-group label{display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px}
+.form-group input{width:100%;padding:11px 14px;background:var(--bg-input);
+  border:1.5px solid var(--border);border-radius:var(--r2);color:var(--text);font-size:15px;
+  transition:border var(--tr)}
+.form-group input:focus{outline:none;border-color:var(--primary-light)}
+.login-btn{width:100%;padding:13px;background:var(--primary);color:#fff;border:none;
+  border-radius:var(--r2);font-size:16px;font-weight:700;transition:background var(--tr);margin-top:8px}
+.login-btn:hover{background:var(--primary-light)}
+.login-err{color:var(--danger);font-size:13px;text-align:center;margin-top:10px;min-height:20px}
+.demo-hint{margin-top:20px;padding:14px;background:rgba(0,59,142,.12);border-radius:var(--r2);
+  border:1px solid rgba(0,59,142,.3);font-size:12px;color:var(--text2);line-height:1.8}
+.demo-hint strong{color:var(--accent);display:block;margin-bottom:4px}
+
+/* ===== LAYOUT ===== */
+#app{display:grid;grid-template-rows:60px 1fr auto;grid-template-columns:240px 1fr;
+  grid-template-areas:"hdr hdr" "side main" "foot foot";min-height:100vh}
+@media(max-width:768px){
+  #app{grid-template-columns:1fr;grid-template-areas:"hdr" "main" "foot"}
+  #sidebar{display:none;position:fixed;inset:60px 0 0 0;z-index:100;width:100%;overflow-y:auto}
+  #sidebar.open{display:block}
+}
+
+/* ===== HEADER ===== */
+header{grid-area:hdr;background:var(--hdr);border-bottom:1px solid rgba(255,255,255,.1);
+  display:flex;align-items:center;padding:0 20px;gap:16px;position:sticky;top:0;z-index:200}
+.hdr-logo{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.hdr-logo .logo-badge{background:rgba(255,255,255,.15);border-radius:8px;
+  padding:6px 10px;display:flex;align-items:center;gap:8px}
+.hdr-logo .logo-badge svg{width:28px;height:28px}
+.hdr-logo .logo-names{line-height:1.3}
+.hdr-logo .logo-names .l1{font-size:14px;font-weight:800;color:#fff}
+.hdr-logo .logo-names .l2{font-size:10px;color:rgba(255,255,255,.6);font-weight:500}
+.hdr-divider{width:1px;height:30px;background:rgba(255,255,255,.15)}
+.hdr-title{font-size:13px;font-weight:600;color:rgba(255,255,255,.75);flex:1}
+.hdr-actions{display:flex;align-items:center;gap:8px}
+.hdr-user{display:flex;align-items:center;gap:8px;padding:6px 12px;
+  background:rgba(255,255,255,.1);border-radius:20px}
+.hdr-user .avatar{width:28px;height:28px;border-radius:50%;background:var(--primary-light);
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff}
+.hdr-user .uname{font-size:13px;color:rgba(255,255,255,.85);font-weight:500}
+.hdr-user .role-badge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600}
+.role-instructor .role-badge{background:rgba(247,183,50,.2);color:var(--accent)}
+.role-manager .role-badge{background:rgba(46,204,113,.2);color:var(--success)}
+.role-trainee .role-badge{background:rgba(100,160,255,.2);color:#64A0FF}
+.icon-btn{width:36px;height:36px;border-radius:50%;border:none;background:rgba(255,255,255,.1);
+  color:rgba(255,255,255,.8);display:flex;align-items:center;justify-content:center;
+  transition:background var(--tr);flex-shrink:0}
+.icon-btn:hover{background:rgba(255,255,255,.2)}
+.mobile-menu-btn{display:none}
+@media(max-width:768px){.mobile-menu-btn{display:flex}.hdr-title{display:none}}
+
+/* ===== SIDEBAR ===== */
+#sidebar{grid-area:side;background:var(--side);border-left:1px solid var(--border);
+  padding:20px 0;overflow-y:auto}
+.nav-section{margin-bottom:8px}
+.nav-label{font-size:10px;font-weight:700;color:var(--text3);padding:0 20px 6px;
+  text-transform:uppercase;letter-spacing:.08em}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;
+  font-size:14px;font-weight:500;color:var(--text2);cursor:pointer;
+  transition:all var(--tr);border-right:3px solid transparent;border-radius:0}
+.nav-item:hover{background:var(--bg-hover);color:var(--text)}
+.nav-item.active{background:rgba(0,59,142,.15);color:var(--primary-light);
+  border-right-color:var(--primary-light);font-weight:700}
+[data-theme=light] .nav-item.active{background:rgba(0,59,142,.1)}
+.nav-item svg{width:18px;height:18px;flex-shrink:0}
+
+/* ===== MAIN ===== */
+main{grid-area:main;padding:24px;overflow-y:auto;max-height:calc(100vh - 60px)}
+@media(max-width:768px){main{padding:16px;max-height:none}}
+.view{display:none}
+.view.active{display:block}
+
+/* ===== CARDS & UTILS ===== */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:24px}
+.card-sm{padding:16px}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.page-title{font-size:22px;font-weight:800;color:var(--text)}
+.page-sub{font-size:13px;color:var(--text2);margin-top:2px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:var(--r2);
+  font-size:14px;font-weight:600;border:none;transition:all var(--tr)}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-light)}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text2)}
+.btn-outline:hover{border-color:var(--primary-light);color:var(--primary-light);background:rgba(0,59,142,.07)}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-sm{padding:6px 12px;font-size:13px}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.badge-success{background:rgba(46,204,113,.15);color:#2ECC71}
+.badge-warn{background:rgba(255,193,7,.15);color:#FFC107}
+.badge-danger{background:rgba(227,30,36,.15);color:#E31E24}
+.badge-info{background:rgba(26,91,196,.15);color:#4A8EE0}
+.badge-gray{background:rgba(100,120,160,.15);color:var(--text2)}
+.divider{height:1px;background:var(--border);margin:20px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:600px){.grid2,.grid3{grid-template-columns:1fr}}
+.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);
+  padding:18px 20px;display:flex;flex-direction:column;gap:4px}
+.stat-card .stat-val{font-size:28px;font-weight:800;color:var(--text)}
+.stat-card .stat-lbl{font-size:12px;color:var(--text2);font-weight:500}
+.stat-card .stat-icon{font-size:22px;margin-bottom:4px}
+
+/* ===== STATS GRID ===== */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+@media(max-width:900px){.stats-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.stats-grid{grid-template-columns:1fr 1fr}}
+
+/* ===== TABLE ===== */
+.table-wrap{overflow-x:auto;border-radius:var(--r);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+thead th{background:rgba(0,59,142,.12);padding:12px 16px;text-align:right;font-weight:700;
+  color:var(--text2);font-size:12px;text-transform:uppercase;letter-spacing:.05em;
+  white-space:nowrap;border-bottom:1px solid var(--border)}
+tbody tr{border-bottom:1px solid var(--border);transition:background var(--tr);cursor:pointer}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--bg-hover)}
+tbody td{padding:12px 16px;color:var(--text);vertical-align:middle}
+.td-name{font-weight:700;color:var(--text)}
+.td-score{font-weight:700;font-size:15px}
+.score-hi{color:var(--success)}
+.score-med{color:var(--warn)}
+.score-lo{color:var(--danger)}
+
+/* ===== SEARCH ===== */
+.search-bar{display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+.search-bar input{flex:1;min-width:200px;padding:9px 14px;background:var(--bg-input);
+  border:1.5px solid var(--border);border-radius:var(--r2);color:var(--text);font-size:14px}
+.search-bar input:focus{outline:none;border-color:var(--primary-light)}
+
+/* ===== TRAINEE DETAIL ===== */
+.trainee-hdr{background:linear-gradient(135deg,var(--primary-dark),var(--primary-light));
+  border-radius:var(--r);padding:24px 28px;margin-bottom:20px;display:flex;
+  align-items:center;gap:20px;flex-wrap:wrap}
+.trainee-avatar-lg{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.2);
+  display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#fff;
+  border:3px solid rgba(255,255,255,.4);flex-shrink:0}
+.trainee-hdr-info{flex:1}
+.trainee-hdr-info h2{font-size:24px;font-weight:800;color:#fff;margin-bottom:4px}
+.trainee-hdr-info .meta{font-size:13px;color:rgba(255,255,255,.75);display:flex;gap:16px;flex-wrap:wrap}
+.trainee-hdr-actions{display:flex;gap:8px}
+
+/* ===== TABS ===== */
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;overflow-x:auto}
+.tab{padding:10px 18px;font-size:14px;font-weight:600;color:var(--text2);cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-2px;transition:all var(--tr);white-space:nowrap}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--primary-light);border-bottom-color:var(--primary-light)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* ===== FIELDS ===== */
+.field-group{margin-bottom:20px}
+.field-group label{display:block;font-size:12px;font-weight:700;color:var(--text2);
+  margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
+.field-val{font-size:14px;color:var(--text);line-height:1.7;
+  background:var(--bg-input);border-radius:var(--r2);padding:10px 14px;
+  border:1px solid var(--border);min-height:40px}
+.field-val.multiline{white-space:pre-wrap;min-height:80px}
+.field-val.empty{color:var(--text3);font-style:italic}
+.edit-input{width:100%;padding:10px 14px;background:var(--bg-input);
+  border:1.5px solid var(--border);border-radius:var(--r2);color:var(--text);
+  font-size:14px;transition:border var(--tr);resize:vertical}
+.edit-input:focus{outline:none;border-color:var(--primary-light)}
+textarea.edit-input{min-height:80px;line-height:1.7}
+select.edit-input{appearance:none;cursor:pointer}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+.info-item{background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r2);padding:12px 14px}
+.info-item .il{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;
+  letter-spacing:.05em;margin-bottom:4px}
+.info-item .iv{font-size:15px;font-weight:600;color:var(--text)}
+
+/* ===== SCORE TABLE ===== */
+.score-section{margin-bottom:24px}
+.score-section-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;
+  display:flex;align-items:center;gap:8px}
+.score-section-title span{font-size:12px;color:var(--text2);font-weight:500}
+.score-table{width:100%;border-collapse:collapse;font-size:13px}
+.score-table th{background:rgba(0,59,142,.1);padding:8px 12px;text-align:right;
+  font-weight:700;color:var(--text2);font-size:11px;letter-spacing:.04em;
+  border:1px solid var(--border)}
+.score-table td{padding:8px 12px;border:1px solid var(--border);color:var(--text);vertical-align:middle}
+.score-table .group-row td{background:rgba(0,59,142,.06);font-weight:700;color:var(--text);font-size:13px}
+.score-table .summary-row td{background:rgba(247,183,50,.07);font-weight:800;color:var(--accent)}
+.score-table .total-row td{background:rgba(0,59,142,.15);font-weight:800;color:var(--primary-light);font-size:15px}
+.score-num{text-align:center;font-weight:700}
+.score-chip{display:inline-block;padding:2px 10px;border-radius:20px;font-weight:700;font-size:13px}
+.s-hi{background:rgba(46,204,113,.15);color:#2ECC71}
+.s-med{background:rgba(255,193,7,.15);color:#FFC107}
+.s-lo{background:rgba(227,30,36,.15);color:#E31E24}
+.score-input{width:50px;text-align:center;padding:4px;background:var(--bg-input);
+  border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px;font-weight:700}
+.score-input:focus{outline:none;border-color:var(--primary-light)}
+
+/* ===== PRACTICAL TESTS ===== */
+.test-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.test-card{border-radius:var(--r2);border:1px solid var(--border);padding:14px;text-align:center;background:var(--bg-input)}
+.test-card .test-name{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px}
+.test-attempt{display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:6px;font-size:12px;color:var(--text2)}
+.test-attempt .att-val{font-weight:700}
+.att-pass{color:var(--success)}
+.att-fail{color:var(--danger)}
+
+/* ===== PROGRESS BAR ===== */
+.progress-bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-top:4px}
+.progress-fill{height:100%;border-radius:4px;transition:width .4s ease}
+.pf-blue{background:linear-gradient(90deg,var(--primary),var(--primary-light))}
+.pf-green{background:linear-gradient(90deg,#27AE60,#2ECC71)}
+.pf-yellow{background:linear-gradient(90deg,#E67E22,#F7B732)}
+.pf-red{background:linear-gradient(90deg,#C0392B,#E31E24)}
+
+/* ===== GAPS ===== */
+.gap-tag{display:inline-flex;align-items:center;gap:6px;background:rgba(227,30,36,.1);
+  border:1px solid rgba(227,30,36,.3);border-radius:20px;padding:5px 12px;
+  font-size:13px;color:var(--text);margin:4px}
+.rec-tag{display:inline-flex;align-items:center;gap:6px;background:rgba(46,204,113,.1);
+  border:1px solid rgba(46,204,113,.3);border-radius:20px;padding:5px 12px;
+  font-size:13px;color:var(--text);margin:4px}
+.tags-wrap{display:flex;flex-wrap:wrap;gap:4px;padding:6px 0}
+
+/* ===== ALERT ===== */
+.alert{padding:12px 16px;border-radius:var(--r2);font-size:14px;margin-bottom:16px;
+  display:flex;align-items:flex-start;gap:10px}
+.alert-warn{background:rgba(255,193,7,.1);border:1px solid rgba(255,193,7,.3);color:var(--warn)}
+.alert-info{background:rgba(0,59,142,.1);border:1px solid rgba(0,59,142,.3);color:var(--primary-light)}
+
+/* ===== PROFILE ===== */
+.profile-card{max-width:600px}
+.profile-avatar{width:80px;height:80px;border-radius:50%;background:var(--primary);
+  display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:#fff;
+  margin-bottom:16px;border:4px solid var(--border)}
+
+/* ===== FOOTER ===== */
+footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,255,.1);
+  padding:16px 28px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.footer-text{font-size:12px;color:rgba(255,255,255,.5);line-height:1.8}
+.footer-text a{color:rgba(255,255,255,.7)}
+.footer-text a:hover{color:#fff}
+.footer-contact{font-size:12px;color:rgba(255,255,255,.5);text-align:left}
+
+/* ===== TOAST ===== */
+.toast-wrap{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r2);
+  padding:12px 18px;font-size:14px;font-weight:500;color:var(--text);
+  box-shadow:0 6px 24px var(--shadow);min-width:240px;
+  animation:slideIn .3s ease;display:flex;align-items:center;gap:10px}
+.toast-success{border-right:4px solid var(--success)}
+.toast-error{border-right:4px solid var(--danger)}
+.toast-info{border-right:4px solid var(--primary-light)}
+@keyframes slideIn{from{transform:translateX(100px);opacity:0}to{transform:none;opacity:1}}
+@keyframes fadeOut{from{opacity:1}to{opacity:0}}
+
+/* ===== MODAL ===== */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;
+  display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;
+  padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px var(--shadow)}
+.modal h3{font-size:18px;font-weight:800;margin-bottom:16px;color:var(--text)}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+
+/* ===== EMPTY STATE ===== */
+.empty-state{text-align:center;padding:48px 24px;color:var(--text2)}
+.empty-state .es-icon{font-size:40px;margin-bottom:12px;opacity:.5}
+.empty-state h3{font-size:18px;font-weight:700;margin-bottom:6px;color:var(--text)}
+.empty-state p{font-size:14px}
+
+/* ===== PHOTO ===== */
+.photo-wrap{width:100px;height:100px;border-radius:50%;border:3px solid var(--border);
+  overflow:hidden;background:var(--bg-input);display:flex;align-items:center;
+  justify-content:center;cursor:pointer;position:relative;flex-shrink:0}
+.photo-wrap img{width:100%;height:100%;object-fit:cover}
+.photo-wrap .photo-placeholder{font-size:36px;font-weight:800;color:var(--text2)}
+.photo-overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);
+  display:flex;align-items:center;justify-content:center;opacity:0;transition:.2s}
+.photo-wrap:hover .photo-overlay{opacity:1}
+.photo-overlay span{color:#fff;font-size:11px;font-weight:700;text-align:center}
+.photo-wrap-lg{width:120px;height:120px;border-radius:12px;flex-shrink:0}
+.photo-wrap-hdr{width:64px;height:64px;border-radius:50%;border:3px solid rgba(255,255,255,.4)}
+
+/* ===== SERVER STATUS ===== */
+.server-status{display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;
+  border-radius:20px;border:1px solid var(--border)}
+.srv-dot{width:7px;height:7px;border-radius:50%}
+.srv-online .srv-dot{background:var(--success);box-shadow:0 0 6px var(--success)}
+.srv-offline .srv-dot{background:var(--danger)}
+
+/* ===== EDIT MODE BANNER ===== */
+.edit-banner{background:linear-gradient(90deg,#E67E22,#F39C12);
+  padding:10px 20px;border-radius:var(--r2);margin-bottom:16px;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.edit-banner .eb-text{font-size:14px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px}
+.edit-banner .eb-actions{display:flex;gap:8px}
+.btn-save{background:#fff;color:#E67E22;border:none;padding:8px 18px;border-radius:var(--r2);
+  font-size:14px;font-weight:800;cursor:pointer;transition:all var(--tr)}
+.btn-save:hover{background:#FFF3E0}
+.btn-cancel-edit{background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.5);
+  padding:8px 14px;border-radius:var(--r2);font-size:13px;font-weight:600;cursor:pointer}
+.btn-cancel-edit:hover{background:rgba(255,255,255,.3)}
+
+/* ===== PRINT ===== */
+@media print{
+  #sidebar,header .hdr-actions,.trainee-hdr-actions,.tabs,.btn,footer{display:none!important}
+  #app{display:block}
+  main{max-height:none;padding:0}
+  .tab-content{display:block!important}
+  body{background:#fff;color:#000}
+  .card,.score-table td,.score-table th,.field-val{background:#fff!important;border-color:#ccc!important;color:#000!important}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+<div class="login-card">
+  <div class="login-logo">
+    <div class="rail-logo">
+      <svg viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="6" fill="#fff" fill-opacity=".15"/><rect x="6" y="14" width="24" height="3" rx="1.5" fill="#fff"/><rect x="6" y="19" width="24" height="3" rx="1.5" fill="#fff"/><rect x="12" y="10" width="3" height="16" rx="1.5" fill="#fff"/><rect x="21" y="10" width="3" height="16" rx="1.5" fill="#fff"/></svg>
+      <span style="font-size:15px;font-weight:900;color:#fff;letter-spacing:.02em">רכבת ישראל</span>
+    </div>
+    <div class="logo-text">חטיבת מטענים | מחלקת הדרכה</div>
+  </div>
+  <div class="login-title">
+    <h1>מערכת ניהול ביצועי חניך</h1>
+    <p>הכשרת נהגי משא קורס ישיר</p>
+  </div>
+  <div class="form-group">
+    <label>שם משתמש</label>
+    <input type="text" id="inp-user" placeholder="הכנס שם משתמש" autocomplete="username">
+  </div>
+  <div class="form-group">
+    <label>סיסמה</label>
+    <input type="password" id="inp-pass" placeholder="הכנס סיסמה" autocomplete="current-password">
+  </div>
+  <button class="login-btn" onclick="doLogin()">כניסה למערכת</button>
+  <div class="login-err" id="login-err"></div>
+  <div class="demo-hint">
+    <strong>כניסה לדוגמה:</strong>
+    מנהל: <b>manager</b> / <b>manage2025</b><br>
+    מדריך: <b>elad</b> / <b>elad2025</b> &nbsp;|&nbsp; <b>zohar</b> / <b>zohar2025</b><br>
+    חניך: שם משתמש + 123 (לדוגמה: <b>itamar</b> / <b>itamar123</b>)
+  </div>
+</div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+
+<header>
+  <div class="hdr-logo">
+    <div class="logo-badge">
+      <svg viewBox="0 0 28 28" fill="none"><rect x="2" y="10" width="24" height="3" rx="1.5" fill="#fff"/><rect x="2" y="15" width="24" height="3" rx="1.5" fill="#fff"/><rect x="9" y="7" width="3" height="14" rx="1.5" fill="#fff"/><rect x="16" y="7" width="3" height="14" rx="1.5" fill="#fff"/></svg>
+      <div class="logo-names"><div class="l1">רכבת ישראל</div><div class="l2">חטיבת מטענים</div></div>
+    </div>
+  </div>
+  <div class="hdr-divider"></div>
+  <div class="hdr-title">מערכת ניהול ביצועי חניך</div>
+  <div class="hdr-actions">
+    <div class="server-status srv-offline" id="srv-status" title="שרת ייצוא Excel — הפעל הפעל מערכת.bat">
+      <div class="srv-dot"></div><span id="srv-label">שרת כבוי</span>
+    </div>
+    <button class="icon-btn" onclick="toggleTheme()" title="החלף ערכת נושא">
+      <svg id="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <div class="hdr-user" id="hdr-user-info">
+      <div class="avatar" id="hdr-avatar">?</div>
+      <div class="uname" id="hdr-uname">משתמש</div>
+      <span class="role-badge" id="hdr-role">—</span>
+    </div>
+    <button class="icon-btn" onclick="doLogout()" title="יציאה">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+    </button>
+    <button class="icon-btn mobile-menu-btn" onclick="toggleSidebar()" title="תפריט">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</header>
+
+<aside id="sidebar">
+  <div class="nav-section">
+    <div class="nav-label">ניווט</div>
+    <div class="nav-item active" data-view="dashboard" onclick="navigate('dashboard')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      לוח בקרה
+    </div>
+    <div class="nav-item" data-view="trainees" onclick="navigate('trainees')" id="nav-trainees">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      כל החניכים
+    </div>
+    <div class="nav-item" data-view="profile" onclick="navigate('profile')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      פרופיל אישי
+    </div>
+  </div>
+  <div class="nav-section" id="nav-trainee-links" style="display:none">
+    <div class="nav-label">חניכים</div>
+    <div id="trainee-nav-list"></div>
+  </div>
+</aside>
+
+<main>
+
+<!-- DASHBOARD VIEW -->
+<div id="view-dashboard" class="view active">
+  <div class="page-header">
+    <div>
+      <div class="page-title" id="dash-title">לוח בקרה</div>
+      <div class="page-sub" id="dash-sub">קורס נהג משא ישיר | מחזור אפריל 2026</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-outline" id="btn-export-all" onclick="exportToExcel()" style="display:none">
+        📥 ייצוא Excel
+      </button>
+      <button class="btn btn-primary" id="btn-add-trainee" onclick="openAddTrainee()" style="display:none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        הוסף חניך
+      </button>
+    </div>
+  </div>
+  <div id="dash-content"></div>
+</div>
+
+<!-- TRAINEES VIEW -->
+<div id="view-trainees" class="view">
+  <div class="page-header">
+    <div><div class="page-title">כל החניכים</div><div class="page-sub">רשימת חניכי הקורס</div></div>
+  </div>
+  <div class="search-bar">
+    <input type="text" id="search-inp" placeholder="🔍 חפש חניך לפי שם..." oninput="filterTrainees()">
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>שם חניך</th><th>גיל</th><th>מתחם</th>
+          <th>ציון מוטיבציה</th><th>ציון מקצועיות</th><th>ציון משוכלל</th>
+          <th>סטטוס</th><th>פעולות</th>
+        </tr>
+      </thead>
+      <tbody id="trainees-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- TRAINEE DETAIL VIEW -->
+<div id="view-trainee" class="view">
+  <div id="trainee-detail-content"></div>
+</div>
+
+<!-- PROFILE VIEW -->
+<div id="view-profile" class="view">
+  <div class="page-header">
+    <div><div class="page-title">פרופיל אישי</div><div class="page-sub">ניהול פרטי המשתמש שלך</div></div>
+  </div>
+  <div class="card profile-card">
+    <div id="profile-avatar" class="profile-avatar">?</div>
+    <div class="grid2" style="margin-bottom:20px">
+      <div class="field-group"><label>שם מלא</label><div id="pf-name" class="field-val"></div></div>
+      <div class="field-group"><label>שם משתמש</label><div id="pf-uname" class="field-val"></div></div>
+      <div class="field-group"><label>תפקיד</label><div id="pf-role" class="field-val"></div></div>
+      <div class="field-group"><label>קורס</label><div id="pf-course" class="field-val">קורס נהג משא ישיר</div></div>
+    </div>
+    <div class="divider"></div>
+    <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text)">שינוי סיסמה</h3>
+    <div style="max-width:360px">
+      <div class="form-group"><label>סיסמה נוכחית</label><input type="password" id="pw-current" class="edit-input"></div>
+      <div class="form-group"><label>סיסמה חדשה</label><input type="password" id="pw-new" class="edit-input"></div>
+      <div class="form-group"><label>אימות סיסמה חדשה</label><input type="password" id="pw-confirm" class="edit-input"></div>
+      <button class="btn btn-primary" onclick="changePassword()">עדכן סיסמה</button>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<footer>
+  <div class="footer-text">
+    <strong style="color:rgba(255,255,255,.7)">רכבת ישראל | חטיבת מטענים</strong><br>
+    מחלקת הדרכה ופיתוח עובדים &nbsp;|&nbsp; קורס נהג משא ישיר<br>
+    © 2025 כל הזכויות שמורות לרכבת ישראל
+  </div>
+  <div class="footer-contact">
+    <div style="color:rgba(255,255,255,.6);margin-bottom:2px">תמיכה טכנית:</div>
+    <a href="mailto:hdr.metanim@rail.co.il" style="color:rgba(255,255,255,.7)">hdr.metanim@rail.co.il</a><br>
+    <span style="color:rgba(255,255,255,.5)">מחלקת הדרכה | חטיבת מטענים</span>
+  </div>
+</footer>
+
+</div><!-- /app -->
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+// ============================================================
+// DATA
+// ============================================================
+
+const SCORE_TEMPLATE = {
+  categories:[
+    {
+      key:'motivation', name:'מוטיבציה ללמידה', weight:0.40,
+      groups:[
+        {
+          name:'מעורבות חניך בתהליך הלמידה',
+          items:[
+            'פעיל ומעורב בשיעור באופן חיובי ומקדם',
+            'עונה על שאלות באופן מקצועי וממוקד',
+            'מפגין סקרנות מקצועית, מביע דעתו, דורש לדעת',
+            'מפגין יכולת לימוד עצמית'
+          ]
+        }
+      ]
+    },
+    {
+      key:'professionalism', name:'מקצועיות ומקצוענות', weight:0.55,
+      groups:[
+        {
+          name:'איכות ביצוע משימות',
+          items:[
+            'משלב באופן איכותי בין תוכן עיוני לתוכן מעשי',
+            'מבצע משימותיו באופן עצמאי',
+            'מבצע משימותיו באופן איכותי ומדויק',
+            'מבצע משימותיו בקצב משביע רצון'
+          ]
+        },
+        {
+          name:'התמודדות עם פערים',
+          items:[
+            'יודע להגדיר פערי ידע הקיימים אצלו',
+            'פרואקטיבי ודואג להשלים פערי ידע'
+          ]
+        }
+      ]
+    },
+    {
+      key:'discipline', name:'משמעת', weight:0.05,
+      groups:[
+        {
+          name:'דיוק ועמידה בלוחות זמנים',
+          items:['מגיע בזמן ליום הלימודים','חוזר בזמן מהפסקות']
+        },
+        {
+          name:'בטיחות',
+          items:['מקפיד על לבוש ותנועה בטיחותיים, צופה/מתאר מצבי סיכון ומגיב אליהם']
+        },
+        {
+          name:'משמעת כללית',
+          items:[
+            'אינו משתמש בטלפון נייד בזמן שיעור',
+            'אינו פוגע בתשומת לב חניכים',
+            'בעל הופעה מסודרת ותקינה/ביגוד יצוגי'
+          ]
+        }
+      ]
+    }
+  ]
+};
+
+// Flat item count per category
+const CAT_ITEM_COUNTS = SCORE_TEMPLATE.categories.map(c=>c.groups.reduce((s,g)=>s+g.items.length,0));
+
+const DATA_VERSION = 'apr2026v3';
+
+// ── Supabase ──────────────────────────────────────────────
+const SUPABASE_URL = 'https://qvyzxqoatcpshgfzshxd.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2eXp4cW9hdGNwc2hnZnpzaHhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NjQzNjksImV4cCI6MjA5NjE0MDM2OX0.Q1k-lBqafWscmW1-NW6uPcOhxh38jDXBmud6nMV66EE';
+const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let _dataCache = null;
+
+const _emptyScores = () => ({
+  motivation:    Array(4).fill(null).map(()=>[null,null]),
+  professionalism: Array(6).fill(null).map(()=>[null,null]),
+  discipline:    Array(6).fill(null).map(()=>[null,null])
+});
+const _emptyPractical = () => ({jt42cw:['',''],gm:['',''],euro4000:['',''],signalsPractical:['','']});
+const _emptyTheory = () => ({signals:null,jt42:null,euro4000:null,gm:[],routine:null,emergency:null,choms:null});
+
+const INITIAL_TRAINEES = [
+  {
+    id:1, name:'איתמר פרץ', username:'itamar',
+    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
+    age:26, familyStatus:'', location:'אשדוד', education:'בגרות מלאה',
+    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
+    evalDates:['',''], scores:_emptyScores()
+  },
+  {
+    id:2, name:'יאיר לוי', username:'yair',
+    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
+    age:null, familyStatus:'', location:'אשדוד', education:'בגרות מלאה',
+    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
+    evalDates:['',''], scores:_emptyScores()
+  },
+  {
+    id:3, name:'שי אילוז', username:'shai',
+    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
+    age:33, familyStatus:'נשוי +3', location:'אשדוד', education:'בגרות מלאה',
+    status:'בהמתנה', instructorEval:'היה פקח', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
+    evalDates:['',''], scores:_emptyScores()
+  },
+  {
+    id:4, name:'רז צרפתי', username:'raz',
+    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
+    age:27, familyStatus:'', location:'אשדוד', education:'בגרות מלאה',
+    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
+    evalDates:['',''], scores:_emptyScores()
+  },
+  {
+    id:5, name:'רם מלול', username:'ram',
+    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
+    age:24, familyStatus:'', location:'דימונה', education:'בגרות מלאה',
+    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
+    evalDates:['',''], scores:_emptyScores()
+  },
+  {
+    id:6, name:'יואל שטרית', username:'yoel',
+    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
+    age:30, familyStatus:'', location:'דימונה', education:'בגרות מלאה',
+    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
+    evalDates:['',''], scores:_emptyScores()
+  },
+  {
+    id:7, name:'יעקוב ילוז', username:'yaakov',
+    course:'קורס נהג משא ישיר', cohort:'06/2025', plannedEnd:'',
+    age:44, familyStatus:'', location:'דימונה', education:'בגרות מלאה',
+    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
+    evalDates:['',''], scores:_emptyScores()
+  },
+  {
+    id:8, name:'איתי שלום חיון', username:'itai',
+    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
+    age:null, familyStatus:'', location:'דימונה', education:'בגרות מלאה',
+    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
+    evalDates:['',''], scores:_emptyScores()
+  },
+  {
+    id:9, name:'אלי אליאב סוויסה', username:'eli',
+    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
+    age:22, familyStatus:'', location:'דימונה', education:'בגרות מלאה',
+    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
+    evalDates:['',''], scores:_emptyScores()
+  },
+  {
+    id:10, name:'רון אלי בנסבי', username:'ron',
+    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
+    age:null, familyStatus:'רווק', location:'דימונה', education:'בגרות מלאה',
+    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
+    evalDates:['',''], scores:_emptyScores()
+  },
+  {
+    id:11, name:'שניר אלמלייח', username:'shanir',
+    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
+    age:30, familyStatus:'', location:'חיפה', education:'טכנאי תעשיה וניהול',
+    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
+    evalDates:['',''], scores:_emptyScores()
+  }
+];
+
+const USERS = [
+  {id:100,username:'madrich',password:'train2025',role:'instructor',name:'המדריך הקורס'},
+  {id:101,username:'manager',password:'manage2025',role:'manager',name:'מנהל ההדרכה'},
+  {id:102,username:'elad',password:'elad2025',role:'instructor',name:'אלעד מורלי'},
+  {id:103,username:'zohar',password:'zohar2025',role:'instructor',name:'זוהר פיסו'},
+  {id:1, username:'itamar', password:'itamar123',role:'trainee',traineeId:1, name:'איתמר פרץ'},
+  {id:2, username:'yair',   password:'yair123',  role:'trainee',traineeId:2, name:'יאיר לוי'},
+  {id:3, username:'shai',   password:'shai123',  role:'trainee',traineeId:3, name:'שי אילוז'},
+  {id:4, username:'raz',    password:'raz123',   role:'trainee',traineeId:4, name:'רז צרפתי'},
+  {id:5, username:'ram',    password:'ram123',   role:'trainee',traineeId:5, name:'רם מלול'},
+  {id:6, username:'yoel',   password:'yoel123',  role:'trainee',traineeId:6, name:'יואל שטרית'},
+  {id:7, username:'yaakov', password:'yaakov123',role:'trainee',traineeId:7, name:'יעקוב ילוז'},
+  {id:8, username:'itai',   password:'itai123',  role:'trainee',traineeId:8, name:'איתי שלום חיון'},
+  {id:9, username:'eli',    password:'eli123',   role:'trainee',traineeId:9, name:'אלי אליאב סוויסה'},
+  {id:10,username:'ron',    password:'ron123',   role:'trainee',traineeId:10,name:'רון אלי בנסבי'},
+  {id:11,username:'shanir', password:'shanir123',role:'trainee',traineeId:11,name:'שניר אלמלייח'}
+];
+
+// ============================================================
+// STATE & STORAGE
+// ============================================================
+
+let currentUser = null;
+let currentView = 'dashboard';
+let currentTraineeId = null;
+let isEditMode = false;
+let isDark = true;
+
+// ── Supabase data functions ───────────────────────────────
+
+async function loadDataFromSupabase(){
+  const {data, error} = await _sb.from('trainees').select('data').eq('id',0).single();
+  if(error){ console.error('Load error:',error); return INITIAL_TRAINEES; }
+  const arr = data?.data?.trainees;
+  if(arr && arr.length > 0) return arr;
+  await saveDataToSupabase(INITIAL_TRAINEES);
+  return INITIAL_TRAINEES;
+}
+
+async function saveDataToSupabase(arr){
+  const {error} = await _sb.from('trainees').upsert({id:0, data:{trainees:arr}});
+  if(error) console.error('Save error:',error);
+}
+
+function getData(){ return _dataCache || []; }
+function getTrainee(id){ return getData().find(t=>t.id===id); }
+
+function saveData(arr){
+  _dataCache = arr;
+  saveDataToSupabase(arr);
+}
+
+function updateTrainee(id, updates){
+  const data = getData();
+  const idx = data.findIndex(t=>t.id===id);
+  if(idx>=0){ data[idx]={...data[idx],...updates}; saveData(data); }
+}
+
+function addTrainee(t){
+  const data = getData();
+  const maxId = Math.max(...data.map(x=>x.id),0);
+  t.id = maxId+1;
+  data.push(t);
+  saveData(data);
+  const stored = getUsers();
+  stored.push({id:t.id,username:t.username,password:t.username+'123',role:'trainee',traineeId:t.id,name:t.name});
+  saveUsers(stored);
+  return t;
+}
+
+function getUsers(){
+  const stored = localStorage.getItem('ir_users');
+  if(!stored) return USERS;
+  const parsed = JSON.parse(stored);
+  // Always use base USERS (instructors/manager), append only extra trainees added via app
+  const extra = parsed.filter(u=>u.role==='trainee' && !USERS.find(b=>b.id===u.id));
+  return [...USERS, ...extra];
+}
+
+function saveUsers(u){ localStorage.setItem('ir_users', JSON.stringify(u)); }
+
+function refreshCurrentView(){
+  if(currentView==='dashboard') renderDashboard();
+  else if(currentView==='trainees') renderTraineesTable();
+  else if(currentView==='trainee' && currentTraineeId && !isEditMode) renderTraineeDetail(currentTraineeId, false);
+  if(currentUser && (currentUser.role==='instructor'||currentUser.role==='manager')) buildTraineeNavLinks();
+}
+
+function startRealtime(){
+  _sb.channel('trainees-rt')
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'trainees'},payload=>{
+      const arr = payload.new?.data?.trainees;
+      if(arr){ _dataCache=arr; refreshCurrentView(); }
+    })
+    .subscribe();
+}
+
+// ============================================================
+// SCORE CALCULATIONS
+// ============================================================
+
+function calcCatAvg(scores, dateIdx){
+  if(!scores||!scores.length) return 0;
+  const vals = scores.map(s=>(s&&s[dateIdx])?parseFloat(s[dateIdx])||0:0).filter(v=>v>0);
+  if(!vals.length) return 0;
+  return vals.reduce((a,b)=>a+b,0)/vals.length;
+}
+
+function calcWeightedScore(t, dateIdx){
+  const m = calcCatAvg(t.scores.motivation, dateIdx);
+  const p = calcCatAvg(t.scores.professionalism, dateIdx);
+  const d = calcCatAvg(t.scores.discipline, dateIdx);
+  return m*0.4 + p*0.55 + d*0.05;
+}
+
+function scoreClass(s){
+  if(s>=9) return 'score-hi';
+  if(s>=7) return 'score-med';
+  return 'score-lo';
+}
+
+function scoreChipClass(s){
+  if(s>=9) return 's-hi';
+  if(s>=7) return 's-med';
+  return 's-lo';
+}
+
+function fmt(n){ return n?n.toFixed(1):'-'; }
+
+function theoryAvg(t){
+  const s = t.theoryScores;
+  const arr = [s.signals, s.jt42, s.euro4000,
+    Array.isArray(s.gm)?s.gm[s.gm.length-1]:s.gm,
+    s.routine, s.emergency, s.choms].filter(x=>x!=null&&x!=='');
+  if(!arr.length) return 0;
+  return arr.reduce((a,b)=>a+(+b||0),0)/arr.length;
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+
+async function doLogin(){
+  const u=document.getElementById('inp-user').value.trim();
+  const p=document.getElementById('inp-pass').value;
+  const users=getUsers();
+  const user=users.find(x=>x.username===u&&x.password===p);
+  if(!user){ document.getElementById('login-err').textContent='שם משתמש או סיסמה שגויים'; return; }
+  currentUser=user;
+  localStorage.setItem('ir_session',JSON.stringify({id:user.id,username:user.username}));
+  await initApp();
+}
+
+function doLogout(){
+  currentUser=null; localStorage.removeItem('ir_session');
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('inp-user').value=''; document.getElementById('inp-pass').value='';
+  document.getElementById('login-err').textContent='';
+}
+
+function changePassword(){
+  const cur=document.getElementById('pw-current').value;
+  const nw=document.getElementById('pw-new').value;
+  const cf=document.getElementById('pw-confirm').value;
+  const users=getUsers();
+  const idx=users.findIndex(u=>u.id===currentUser.id);
+  if(users[idx].password!==cur){ showToast('סיסמה נוכחית שגויה','error'); return; }
+  if(nw.length<6){ showToast('הסיסמה חייבת להכיל לפחות 6 תווים','error'); return; }
+  if(nw!==cf){ showToast('הסיסמאות אינן תואמות','error'); return; }
+  users[idx].password=nw; saveUsers(users);
+  document.getElementById('pw-current').value=''; document.getElementById('pw-new').value=''; document.getElementById('pw-confirm').value='';
+  showToast('הסיסמה עודכנה בהצלחה','success');
+}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+
+function navigate(view, traineeId){
+  currentView=view; currentTraineeId=traineeId||null; isEditMode=false;
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const el=document.getElementById('view-'+view);
+  if(el) el.classList.add('active');
+  const navEl=document.querySelector(`[data-view="${view}"]`);
+  if(navEl) navEl.classList.add('active');
+  closeSidebar();
+  if(view==='dashboard') renderDashboard();
+  else if(view==='trainees') renderTraineesTable();
+  else if(view==='trainee' && traineeId) renderTraineeDetail(traineeId, false);
+  else if(view==='profile') renderProfile();
+  window.scrollTo(0,0);
+}
+
+function toggleSidebar(){
+  document.getElementById('sidebar').classList.toggle('open');
+}
+function closeSidebar(){
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+// ============================================================
+// INIT APP
+// ============================================================
+
+async function initApp(){
+  if(!_dataCache){
+    showLoading(true);
+    _dataCache = await loadDataFromSupabase();
+    showLoading(false);
+  }
+  startRealtime();
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  const u=currentUser;
+  // header
+  document.getElementById('hdr-avatar').textContent=u.name.charAt(0);
+  document.getElementById('hdr-uname').textContent=u.name;
+  const rb=document.getElementById('hdr-role');
+  const roleMap={instructor:'מדריך',manager:'מנהל',trainee:'חניך'};
+  rb.textContent=roleMap[u.role]||u.role;
+  document.getElementById('hdr-user-info').className=`hdr-user role-${u.role}`;
+  // nav
+  const canSeeAll=u.role==='instructor'||u.role==='manager';
+  document.getElementById('nav-trainees').style.display=canSeeAll?'':'none';
+  document.getElementById('btn-add-trainee').style.display=canSeeAll?'':'none';
+  document.getElementById('btn-export-all').style.display=canSeeAll?'':'none';
+  const nlEl=document.getElementById('nav-trainee-links');
+  if(canSeeAll){
+    nlEl.style.display='block';
+    buildTraineeNavLinks();
+  } else {
+    nlEl.style.display='none';
+    document.getElementById('trainee-nav-list').innerHTML='';
+  }
+  navigate('dashboard');
+}
+
+function buildTraineeNavLinks(){
+  const data=getData();
+  const el=document.getElementById('trainee-nav-list');
+  el.innerHTML=data.map(t=>`
+    <div class="nav-item" onclick="navigate('trainee',${t.id})">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      ${t.name}
+    </div>`).join('');
+}
+
+// ============================================================
+// DASHBOARD RENDER
+// ============================================================
+
+function renderDashboard(){
+  const u=currentUser;
+  const el=document.getElementById('dash-content');
+  if(u.role==='trainee'){
+    const t=getTrainee(u.traineeId);
+    document.getElementById('dash-title').textContent='הדף שלי';
+    if(!t){ el.innerHTML='<div class="empty-state"><div class="es-icon">📋</div><h3>לא נמצאו נתונים</h3></div>'; return; }
+    el.innerHTML=renderTraineeCard(t);
+  } else {
+    document.getElementById('dash-title').textContent='לוח בקרה';
+    const data=getData();
+    const avgScore=data.reduce((s,t)=>s+calcWeightedScore(t,1),0)/data.length;
+    const passing=data.filter(t=>calcWeightedScore(t,1)>=7).length;
+    el.innerHTML=`
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-val">${data.length}</div><div class="stat-lbl">חניכים בקורס</div></div>
+        <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-val">${fmt(avgScore)}</div><div class="stat-lbl">ממוצע כיתה</div></div>
+        <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-val">${passing}</div><div class="stat-lbl">עוברים (≥7)</div></div>
+        <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-val">29.09</div><div class="stat-lbl">תאריך סיום מתוכנן</div></div>
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+          <div style="font-size:16px;font-weight:700;color:var(--text)">סקירת חניכים</div>
+          <button class="btn btn-outline btn-sm" onclick="navigate('trainees')">הצג הכל</button>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>שם חניך</th><th>מוטיבציה</th><th>מקצועיות</th><th>משמעת</th><th>ציון משוכלל</th><th>סטטוס</th></tr></thead>
+          <tbody>
+            ${data.map(t=>{
+              const w=calcWeightedScore(t,1);
+              const m=calcCatAvg(t.scores.motivation,1);
+              const p=calcCatAvg(t.scores.professionalism,1);
+              const d=calcCatAvg(t.scores.discipline,1);
+              return `<tr onclick="navigate('trainee',${t.id})">
+                <td class="td-name">${t.name}</td>
+                <td class="td-score ${scoreClass(m)}">${fmt(m)}</td>
+                <td class="td-score ${scoreClass(p)}">${fmt(p)}</td>
+                <td class="td-score ${scoreClass(d)}">${fmt(d)}</td>
+                <td class="td-score ${scoreClass(w)}" style="font-size:16px">${fmt(w)}</td>
+                <td><span class="badge ${statusBadge(t.status)}">${t.status||'—'}</span></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table></div>
+      </div>`;
+  }
+}
+
+function statusBadge(s){
+  if(s==='מצוין') return 'badge-success';
+  if(s==='טוב') return 'badge-info';
+  if(s==='עובר') return 'badge-warn';
+  if(s==='נכשל') return 'badge-danger';
+  return 'badge-gray';
+}
+
+function renderTraineeCard(t){
+  const w1=calcWeightedScore(t,0); const w2=calcWeightedScore(t,1);
+  const m2=calcCatAvg(t.scores.motivation,1);
+  const p2=calcCatAvg(t.scores.professionalism,1);
+  const d2=calcCatAvg(t.scores.discipline,1);
+  return `
+    <div class="trainee-hdr" style="margin-bottom:20px">
+      <div class="trainee-avatar-lg">${t.name.charAt(0)}</div>
+      <div class="trainee-hdr-info">
+        <h2>${t.name}</h2>
+        <div class="meta">
+          <span>📚 ${t.course}</span>
+          <span>📅 מחזור ${t.cohort}</span>
+          <span>🏁 סיום מתוכנן: ${t.plannedEnd}</span>
+        </div>
+      </div>
+      <span class="badge ${statusBadge(t.status)}" style="font-size:14px;padding:6px 16px">${t.status||'—'}</span>
+    </div>
+    <div class="grid3" style="margin-bottom:20px">
+      ${miniScore('מוטיבציה',m2,0.40)}
+      ${miniScore('מקצועיות',p2,0.55)}
+      ${miniScore('משמעת',d2,0.05)}
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:15px;font-weight:700;margin-bottom:16px;color:var(--text)">ציון משוכלל</div>
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div style="text-align:center">
+          <div style="font-size:40px;font-weight:900;color:var(--primary-light)">${fmt(w2)}</div>
+          <div style="font-size:12px;color:var(--text2)">הערכה אחרונה</div>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:8px">
+            ${t.evalDates[0]} → ${t.evalDates[1]}&nbsp;&nbsp;
+            <span style="font-size:13px;font-weight:700;color:${w2>=w1?'var(--success)':'var(--danger)'}">
+              ${w2>=w1?'▲':'▼'} ${Math.abs(w2-w1).toFixed(1)} נקודות
+            </span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill ${w2>=9?'pf-green':w2>=7?'pf-blue':'pf-yellow'}" style="width:${((w2-5)/5)*100}%"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div style="font-size:15px;font-weight:700;margin-bottom:12px;color:var(--text)">חוות דעת המדריך</div>
+      <div class="field-val multiline" style="${!t.instructorEval?'font-style:italic;color:var(--text3)':''}">${t.instructorEval||'לא הוזנה עדיין'}</div>
+    </div>`;
+}
+
+function miniScore(label, val, weight){
+  const pct=(val-5)/5*100;
+  const cls=val>=9?'pf-green':val>=7?'pf-blue':'pf-yellow';
+  return `<div class="stat-card">
+    <div class="stat-lbl">${label} <span style="color:var(--text3)">(${Math.round(weight*100)}%)</span></div>
+    <div class="stat-val ${scoreClass(val)}">${fmt(val)}</div>
+    <div class="progress-bar"><div class="progress-fill ${cls}" style="width:${pct}%"></div></div>
+  </div>`;
+}
+
+// ============================================================
+// TRAINEES TABLE
+// ============================================================
+
+function renderTraineesTable(){
+  const data=getData();
+  document.getElementById('search-inp').value='';
+  renderTraineesRows(data);
+}
+
+function filterTrainees(){
+  const q=document.getElementById('search-inp').value.trim().toLowerCase();
+  const data=getData().filter(t=>!q||t.name.includes(q)||t.location.toLowerCase().includes(q));
+  renderTraineesRows(data);
+}
+
+function renderTraineesRows(data){
+  const tb=document.getElementById('trainees-tbody');
+  if(!data.length){
+    tb.innerHTML='<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text2)">לא נמצאו חניכים</td></tr>';
+    return;
+  }
+  tb.innerHTML=data.map((t,i)=>{
+    const w=calcWeightedScore(t,1);
+    const m=calcCatAvg(t.scores.motivation,1);
+    const p=calcCatAvg(t.scores.professionalism,1);
+    return `<tr onclick="navigate('trainee',${t.id})">
+      <td style="color:var(--text2);font-weight:700">${i+1}</td>
+      <td class="td-name">${t.name}</td>
+      <td>${t.age||'—'}</td>
+      <td>${t.location||'—'}</td>
+      <td class="td-score ${scoreClass(m)}">${fmt(m)}</td>
+      <td class="td-score ${scoreClass(p)}">${fmt(p)}</td>
+      <td class="td-score ${scoreClass(w)}" style="font-size:16px">${fmt(w)}</td>
+      <td><span class="badge ${statusBadge(t.status)}">${t.status||'—'}</span></td>
+      <td><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();navigate('trainee',${t.id})">פרטים</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ============================================================
+// TRAINEE DETAIL
+// ============================================================
+
+function renderTraineeDetail(id, edit){
+  const t=getTrainee(id); if(!t) return;
+  const canEdit=currentUser.role==='instructor'||currentUser.role==='manager';
+  const el=document.getElementById('trainee-detail-content');
+  const w2=calcWeightedScore(t,1);
+
+  el.innerHTML=`
+    ${edit && canEdit ? `
+    <div class="edit-banner" id="edit-banner">
+      <div class="eb-text">✏️ מצב עריכה פעיל — ערוך את הנתונים בטאבים למטה</div>
+      <div class="eb-actions">
+        <button class="btn-cancel-edit" onclick="renderTraineeDetail(${id},false)">ביטול</button>
+        <button class="btn-save" onclick="saveTrainee(${id})">💾 שמור שינויים</button>
+      </div>
+    </div>` : ''}
+    <div class="trainee-hdr">
+      ${t.photo
+        ? `<div class="photo-wrap photo-wrap-hdr" style="cursor:default"><img src="${t.photo}" alt=""></div>`
+        : `<div class="trainee-avatar-lg">${t.name.charAt(0)}</div>`}
+      <div class="trainee-hdr-info">
+        <h2>${t.name}</h2>
+        <div class="meta">
+          <span>📚 ${t.course}</span>
+          <span>📅 מחזור ${t.cohort}</span>
+          <span>🏁 סיום מתוכנן: ${t.plannedEnd}</span>
+          <span style="font-weight:700;color:var(--accent)">ציון: ${fmt(w2)}</span>
+        </div>
+      </div>
+      <div class="trainee-hdr-actions">
+        ${canEdit && !edit ? `<button class="btn btn-primary btn-sm" id="btn-edit-${id}" onclick="renderTraineeDetail(${id},true)">✏️ עריכה</button>` : ''}
+        <button class="btn btn-outline btn-sm" onclick="exportSingleTrainee(${id})" title="ייצוא גיליון לחניך זה בלבד">📄 ייצוא יחיד</button>
+        ${(currentUser.role==='instructor'||currentUser.role==='manager') ? `<button class="btn btn-outline btn-sm" onclick="exportToExcel()" title="ייצוא כל החניכים — גיליון לכל חניך">📥 ייצוא כולם</button>` : ''}
+        <button class="btn btn-outline btn-sm" onclick="window.print()">🖨️ הדפסה</button>
+      </div>
+    </div>
+
+    <div class="tabs" id="detail-tabs">
+      <div class="tab active" onclick="switchTab('tab-info')">פרטים אישיים</div>
+      <div class="tab" onclick="switchTab('tab-eval')">חוו"ד מדריך</div>
+      <div class="tab" onclick="switchTab('tab-gaps')">פערים והמלצות</div>
+      <div class="tab" onclick="switchTab('tab-theory')">מבחנים עיוניים</div>
+      <div class="tab" onclick="switchTab('tab-practical')">מבחנים מעשיים</div>
+      <div class="tab" onclick="switchTab('tab-scores')">הערכה כמותית</div>
+    </div>
+
+    <div id="tab-info" class="tab-content active">${renderTabInfo(t, edit, canEdit)}</div>
+    <div id="tab-eval" class="tab-content">${renderTabEval(t, edit, canEdit)}</div>
+    <div id="tab-gaps" class="tab-content">${renderTabGaps(t, edit, canEdit)}</div>
+    <div id="tab-theory" class="tab-content">${renderTabTheory(t, edit, canEdit)}</div>
+    <div id="tab-practical" class="tab-content">${renderTabPractical(t, edit, canEdit)}</div>
+    <div id="tab-scores" class="tab-content">${renderTabScores(t, edit, canEdit)}</div>
+  `;
+}
+
+function switchTab(id){
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const tabs=['tab-info','tab-eval','tab-gaps','tab-theory','tab-practical','tab-scores'];
+  const idx=tabs.indexOf(id);
+  document.querySelectorAll('.tab')[idx].classList.add('active');
+}
+
+// ---- TAB: INFO ----
+function renderTabInfo(t, edit, canEdit){
+  const e=edit&&canEdit;
+  const photoHtml = e
+    ? `<div style="margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div class="photo-wrap photo-wrap-lg" id="photo-preview-wrap" onclick="document.getElementById('photo-file-input').click()" title="לחץ להחלפת תמונה">
+          ${t.photo
+            ? `<img src="${t.photo}" alt="" id="photo-preview-img">`
+            : `<span class="photo-placeholder" id="photo-preview-text">${t.name.charAt(0)}</span>`}
+          <div class="photo-overlay"><span>החלף תמונה</span></div>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">תמונת חניך</div>
+          <input type="file" id="photo-file-input" accept="image/*" style="display:none" onchange="previewPhoto(event,${t.id})">
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('photo-file-input').click()">📷 העלה תמונה</button>
+          ${t.photo?`<button class="btn btn-outline btn-sm" style="margin-right:8px;color:var(--danger)" onclick="removePhoto(${t.id})">✕ הסר</button>`:''}
+          <div style="font-size:11px;color:var(--text3);margin-top:6px">JPG / PNG / WebP עד 5MB</div>
+        </div>
+      </div>`
+    : t.photo
+      ? `<div style="margin-bottom:20px"><img src="${t.photo}" style="width:120px;height:120px;object-fit:cover;border-radius:10px;border:2px solid var(--border)"></div>`
+      : '';
+
+  return `<div class="card">
+    ${photoHtml}
+    <div class="info-grid">
+      ${infoField('שם מלא', t.name, e, 'name')}
+      ${infoField('גיל', t.age, e, 'age', 'number')}
+      ${infoField('מתחם', t.location, e, 'location')}
+      ${infoField('מצב משפחתי', t.familyStatus, e, 'familyStatus')}
+      ${infoField('השכלה', t.education, e, 'education')}
+      ${infoField('מחזור', t.cohort, e, 'cohort')}
+      ${infoField('תאריך סיום מתוכנן', t.plannedEnd, e, 'plannedEnd')}
+      ${e?`<div class="info-item"><div class="il">סטטוס</div>
+        <select class="edit-input" data-field="status">
+          ${['מצוין','טוב','עובר','נכשל','בהמתנה'].map(s=>`<option ${t.status===s?'selected':''}>${s}</option>`).join('')}
+        </select></div>`
+      :`<div class="info-item"><div class="il">סטטוס</div><div class="iv"><span class="badge ${statusBadge(t.status)}">${t.status||'—'}</span></div></div>`}
+    </div>
+    <div class="divider"></div>
+    <div style="font-size:13px;font-weight:700;color:var(--text2);margin-bottom:8px">שם משתמש במערכת</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div class="field-val" style="min-width:120px">${t.username}</div>
+      ${canEdit?`<button class="btn btn-outline btn-sm" onclick="openResetPassword(${t.id})">🔑 איפוס סיסמה</button>`:''}
+    </div>
+  </div>`;
+}
+
+function infoField(label, val, edit, field, type='text'){
+  if(edit) return `<div class="info-item"><div class="il">${label}</div>
+    <input type="${type}" class="edit-input" style="padding:6px 10px;font-size:13px" data-field="${field}" value="${val||''}"></div>`;
+  return `<div class="info-item"><div class="il">${label}</div><div class="iv">${val||'—'}</div></div>`;
+}
+
+// ---- TAB: EVAL ----
+function renderTabEval(t, edit, canEdit){
+  const e=edit&&canEdit;
+  return `<div class="card">
+    <div class="field-group">
+      <label>חוות דעת המדריך</label>
+      ${e?`<textarea class="edit-input" data-field="instructorEval" style="min-height:180px">${t.instructorEval||''}</textarea>`
+        :`<div class="field-val multiline ${!t.instructorEval?'empty':''}">${t.instructorEval||'לא הוזנה עדיין'}</div>`}
+    </div>
+    <div class="divider"></div>
+    <div class="field-group">
+      <label>התאמה לתפקיד (סולם 5-10)</label>
+      ${e?`<select class="edit-input" data-field="rolefit">
+        <option value="">בחר ציון</option>
+        ${[10,9,8,7,6,5].map(n=>`<option value="${n}" ${t.rolefit===n?'selected':''}>${n}</option>`).join('')}
+      </select>`
+      :`<div class="field-val"><span class="score-chip ${scoreChipClass(t.rolefit||0)}">${t.rolefit||'—'}</span></div>`}
+    </div>
+  </div>`;
+}
+
+// ---- TAB: GAPS ----
+function renderTabGaps(t, edit, canEdit){
+  const e=edit&&canEdit;
+  const gapHtml = [0,1,2].map(i=>`
+    <div class="field-group">
+      <label>פער ${i+1}</label>
+      ${e?`<textarea class="edit-input" data-field="gap${i}" style="min-height:70px">${(t.gaps&&t.gaps[i])||''}</textarea>`
+        :`<div class="field-val multiline ${!(t.gaps&&t.gaps[i])?'empty':''}">${(t.gaps&&t.gaps[i])||'—'}</div>`}
+    </div>`).join('');
+  const recHtml = [0,1,2].map(i=>`
+    <div class="field-group">
+      <label>המלצה ${i+1}</label>
+      ${e?`<textarea class="edit-input" data-field="rec${i}" style="min-height:70px">${(t.recommendations&&t.recommendations[i])||''}</textarea>`
+        :`<div class="field-val multiline ${!(t.recommendations&&t.recommendations[i])?'empty':''}">${(t.recommendations&&t.recommendations[i])||'—'}</div>`}
+    </div>`).join('');
+  return `<div class="card" style="margin-bottom:16px">
+    <div style="font-size:15px;font-weight:700;color:var(--danger);margin-bottom:16px">⚠️ פערים שזוהו</div>
+    ${gapHtml}
+    <div class="field-group">
+      <label>פער התנהגותי</label>
+      ${e?`<textarea class="edit-input" data-field="behavioralGap" style="min-height:70px">${t.behavioralGap||''}</textarea>`
+        :`<div class="field-val multiline ${!t.behavioralGap?'empty':''}">${t.behavioralGap||'—'}</div>`}
+    </div>
+  </div>
+  <div class="card">
+    <div style="font-size:15px;font-weight:700;color:var(--success);margin-bottom:16px">💡 המלצות לשיפור</div>
+    ${recHtml}
+  </div>`;
+}
+
+// ---- TAB: THEORY ----
+function renderTabTheory(t, edit, canEdit){
+  const e=edit&&canEdit;
+  const s=t.theoryScores;
+  const fields=[
+    {key:'signals',label:'סימנורים',pass:100},
+    {key:'jt42',label:'JT42',pass:80},
+    {key:'euro4000',label:'EURO 4000',pass:80},
+    {key:'gm',label:'GM (ניסיון 1)',pass:80},
+    {key:'gm2',label:'GM (ניסיון 2)', optional:true,pass:80},
+    {key:'routine',label:'הוראות שגרה ועיתוק',pass:80},
+    {key:'emergency',label:'הוראות בחירום',pass:80},
+    {key:'choms',label:'חומ"ס',pass:80}
+  ];
+  const gmVals=Array.isArray(s.gm)?s.gm:[s.gm];
+  const theoryData={
+    signals:s.signals, jt42:s.jt42, euro4000:s.euro4000,
+    gm:gmVals[0], gm2:gmVals[1]||'',
+    routine:s.routine, emergency:s.emergency, choms:s.choms
+  };
+  return `<div class="card">
+    <div class="table-wrap">
+    <table class="score-table">
+      <thead><tr><th>מבחן</th><th>ציון</th><th>מצב</th></tr></thead>
+      <tbody>
+        ${fields.filter(f=>!f.optional||theoryData[f.key]!==undefined&&theoryData[f.key]!=='').map(f=>{
+          const v=theoryData[f.key];
+          const threshold=f.pass||80;
+          const pass=v!=null&&v!==''&&+v>=threshold;
+          return `<tr>
+            <td style="font-weight:600">${f.label} <span style="font-size:11px;color:var(--text3)">(עובר: ${threshold})</span></td>
+            <td>${e?`<input type="number" min="0" max="100" class="score-input" data-theory="${f.key}" value="${v||''}">`
+              :`<span class="td-score ${v>=threshold?'score-hi':v>=(threshold*0.8)?'score-med':'score-lo'}" style="font-size:16px">${v!=null&&v!==''?v:'—'}</span>`}</td>
+            <td>${v!=null&&v!==''?`<span class="badge ${pass?'badge-success':'badge-danger'}">${pass?'עבר':'לא עבר'}</span>`:'<span class="badge badge-gray">טרם נבחן</span>'}</td>
+          </tr>`;
+        }).join('')}
+        ${e?`<tr><td colspan="3" style="padding:8px 12px">
+          <span style="font-size:12px;color:var(--text2)">GM ניסיון 2:</span>
+          <input type="number" min="0" max="100" class="score-input" data-theory="gm2" value="${theoryData.gm2||''}" style="margin-right:8px">
+        </td></tr>`:''}
+      </tbody>
+    </table></div>
+    <div style="margin-top:16px;padding:12px 16px;background:var(--bg-input);border-radius:var(--r2);border:1px solid var(--border)">
+      <span style="font-size:13px;color:var(--text2)">ממוצע עיוני: </span>
+      <span style="font-size:18px;font-weight:800;color:var(--primary-light)">${fmt(theoryAvg(t))}</span>
+    </div>
+  </div>`;
+}
+
+// ---- TAB: PRACTICAL ----
+function renderTabPractical(t, edit, canEdit){
+  const e=edit&&canEdit;
+  const tests=[
+    {key:'jt42cw', label:'JT42CW'},
+    {key:'gm', label:'GM'},
+    {key:'euro4000', label:'יורו 4000'},
+    {key:'signalsPractical', label:'סימנורים מעשי'}
+  ];
+  return `<div class="card">
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px">
+      <span class="badge badge-success" style="margin-left:8px">עבר</span>
+      <span class="badge badge-danger" style="margin-left:8px">לא עבר</span>
+      <span class="badge badge-gray">טרם נבחן</span>
+    </div>
+    <div class="test-grid">
+      ${tests.map(test=>{
+        const vals=t.practicalTests[test.key]||['',''];
+        return `<div class="test-card">
+          <div class="test-name">${test.label}</div>
+          ${[0,1].map(i=>{
+            const v=vals[i]||'';
+            const label=i===0?'ניסיון 1':'ניסיון 2';
+            if(e) return `<div class="test-attempt"><span>${label}:</span>
+              <select class="edit-input" style="padding:4px 8px;font-size:12px;width:auto" data-practical="${test.key}" data-attempt="${i}">
+                <option value="">—</option>
+                <option value="עבר" ${v==='עבר'?'selected':''}>עבר</option>
+                <option value="לא עבר" ${v==='לא עבר'?'selected':''}>לא עבר</option>
+              </select></div>`;
+            return `<div class="test-attempt"><span>${label}:</span>
+              <span class="att-val ${v==='עבר'?'att-pass':v==='לא עבר'?'att-fail':''}">${v||'—'}</span></div>`;
+          }).join('')}
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+// ---- TAB: SCORES ----
+function renderTabScores(t, edit, canEdit){
+  const e=edit&&canEdit;
+  const cats=SCORE_TEMPLATE.categories;
+  const d1=t.evalDates[0]||'תאריך 1'; const d2=t.evalDates[1]||'תאריך 2';
+
+  // Build flat scores per category
+  const catScores={
+    motivation:t.scores.motivation||[],
+    professionalism:t.scores.professionalism||[],
+    discipline:t.scores.discipline||[]
+  };
+
+  let html='<div>';
+
+  // Eval dates edit
+  if(e) html+=`<div class="card card-sm" style="margin-bottom:16px">
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+      <div class="field-group" style="margin:0;flex:1">
+        <label>תאריך הערכה 1</label>
+        <input type="text" class="edit-input" style="padding:7px 12px" data-field="evalDate1" value="${d1}">
+      </div>
+      <div class="field-group" style="margin:0;flex:1">
+        <label>תאריך הערכה 2</label>
+        <input type="text" class="edit-input" style="padding:7px 12px" data-field="evalDate2" value="${d2}">
+      </div>
+    </div>
+  </div>`;
+
+  let itemIdxMap={motivation:0, professionalism:0, discipline:0};
+
+  cats.forEach(cat=>{
+    const catKey=cat.key;
+    const scoresArr=catScores[catKey]||[];
+    html+=`<div class="card" style="margin-bottom:16px">
+      <div class="score-section-title">
+        ${cat.name} <span>(משקל ${Math.round(cat.weight*100)}%)</span>
+      </div>
+      <div class="table-wrap"><table class="score-table">
+        <thead><tr><th>קבוצה / פריט</th><th style="width:90px;text-align:center">${d1}</th><th style="width:90px;text-align:center">${d2}</th></tr></thead>
+        <tbody>`;
+
+    let globalItemIdx=0;
+    cat.groups.forEach(grp=>{
+      html+=`<tr class="group-row"><td colspan="3">${grp.name}</td></tr>`;
+      grp.items.forEach((item,localIdx)=>{
+        const scores=scoresArr[globalItemIdx]||[null,null];
+        const s1=scores[0]; const s2=scores[1];
+        const cellIdx=globalItemIdx;
+        if(e){
+          html+=`<tr><td style="padding-right:24px">${item}</td>
+            <td class="score-num"><input type="number" min="5" max="10" class="score-input" data-cat="${catKey}" data-idx="${cellIdx}" data-date="0" value="${s1||''}"></td>
+            <td class="score-num"><input type="number" min="5" max="10" class="score-input" data-cat="${catKey}" data-idx="${cellIdx}" data-date="1" value="${s2||''}"></td>
+          </tr>`;
+        } else {
+          html+=`<tr><td style="padding-right:24px">${item}</td>
+            <td class="score-num"><span class="score-chip ${scoreChipClass(s1||0)}">${s1!=null&&s1!==''?s1:'—'}</span></td>
+            <td class="score-num"><span class="score-chip ${scoreChipClass(s2||0)}">${s2!=null&&s2!==''?s2:'—'}</span></td>
+          </tr>`;
+        }
+        globalItemIdx++;
+      });
+    });
+
+    const avg1=calcCatAvg(scoresArr,0); const avg2=calcCatAvg(scoresArr,1);
+    html+=`<tr class="summary-row"><td><strong>ממוצע ${cat.name}</strong></td>
+      <td class="score-num"><strong>${fmt(avg1)}</strong></td>
+      <td class="score-num"><strong>${fmt(avg2)}</strong></td>
+    </tr>`;
+    html+=`</tbody></table></div></div>`;
+  });
+
+  // Weighted total
+  const w1=calcWeightedScore(t,0); const w2=calcWeightedScore(t,1);
+  html+=`<div class="card">
+    <div class="table-wrap"><table class="score-table">
+      <tbody>
+        <tr class="total-row">
+          <td style="font-size:16px"><strong>ציון משוכלל סופי</strong> <span style="font-size:12px;color:var(--text2)">(מוטיבציה 40% + מקצועיות 55% + משמעת 5%)</span></td>
+          <td class="score-num" style="font-size:20px"><strong>${fmt(w1)}</strong></td>
+          <td class="score-num" style="font-size:20px"><strong>${fmt(w2)}</strong></td>
+        </tr>
+      </tbody>
+    </table></div>
+  </div>`;
+
+  html+='</div>';
+  return html;
+}
+
+// ============================================================
+// SAVE TRAINEE
+// ============================================================
+
+function saveTrainee(id){
+  const t=getTrainee(id);
+  const updates={...t};
+
+  // Basic fields
+  document.querySelectorAll('[data-field]').forEach(el=>{
+    const f=el.dataset.field;
+    if(f==='evalDate1') updates.evalDates[0]=el.value;
+    else if(f==='evalDate2') updates.evalDates[1]=el.value;
+    else if(f==='rolefit') updates.rolefit=el.value?parseInt(el.value):null;
+    else if(f==='age') updates.age=parseInt(el.value)||null;
+    else updates[f]=el.value;
+  });
+
+  // Gaps & recs
+  updates.gaps=[0,1,2].map(i=>{
+    const el=document.querySelector(`[data-field="gap${i}"]`);
+    return el?el.value:'';
+  });
+  updates.recommendations=[0,1,2].map(i=>{
+    const el=document.querySelector(`[data-field="rec${i}"]`);
+    return el?el.value:'';
+  });
+
+  // Theory scores
+  document.querySelectorAll('[data-theory]').forEach(el=>{
+    const k=el.dataset.theory;
+    const v=el.value!==''?parseInt(el.value):null;
+    if(k==='gm2'){
+      if(!Array.isArray(updates.theoryScores.gm)) updates.theoryScores.gm=[updates.theoryScores.gm];
+      updates.theoryScores.gm[1]=v;
+    } else {
+      updates.theoryScores[k]=v;
+    }
+  });
+
+  // Practical
+  document.querySelectorAll('[data-practical]').forEach(el=>{
+    const k=el.dataset.practical; const i=parseInt(el.dataset.attempt);
+    if(!updates.practicalTests[k]) updates.practicalTests[k]=['',''];
+    updates.practicalTests[k][i]=el.value;
+  });
+
+  // Module scores
+  updates.scores={...t.scores};
+  const cats=['motivation','professionalism','discipline'];
+  cats.forEach(cat=>{
+    const inputs=document.querySelectorAll(`[data-cat="${cat}"]`);
+    if(!inputs.length) return;
+    const max=Math.max(...Array.from(inputs).map(i=>parseInt(i.dataset.idx)))+1;
+    const arr=Array.from({length:max},(_,i)=>{
+      const s0=document.querySelector(`[data-cat="${cat}"][data-idx="${i}"][data-date="0"]`);
+      const s1=document.querySelector(`[data-cat="${cat}"][data-idx="${i}"][data-date="1"]`);
+      return [s0&&s0.value!==''?parseInt(s0.value):null, s1&&s1.value!==''?parseInt(s1.value):null];
+    });
+    updates.scores[cat]=arr;
+  });
+
+  updateTrainee(id, updates);
+  if(currentUser.role==='instructor'||currentUser.role==='manager') buildTraineeNavLinks();
+  renderTraineeDetail(id, false);
+  showToast('הנתונים נשמרו בהצלחה','success');
+}
+
+// ============================================================
+// ADD TRAINEE
+// ============================================================
+
+function openAddTrainee(){
+  const html=`<div class="modal-overlay" id="add-modal" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:580px">
+      <h3>➕ הוספת חניך חדש</h3>
+      <div class="grid2">
+        <div class="form-group"><label>שם מלא *</label><input class="edit-input" id="na-name" placeholder="שם ושם משפחה"></div>
+        <div class="form-group"><label>שם משתמש *</label><input class="edit-input" id="na-uname" placeholder="באנגלית, ללא רווחים"></div>
+        <div class="form-group"><label>גיל</label><input class="edit-input" id="na-age" type="number" min="18" max="60"></div>
+        <div class="form-group"><label>מתחם</label><input class="edit-input" id="na-location" placeholder="עיר מגורים"></div>
+        <div class="form-group"><label>מצב משפחתי</label><input class="edit-input" id="na-family" placeholder="רווק / נשוי / ..."></div>
+        <div class="form-group"><label>השכלה</label><input class="edit-input" id="na-edu" placeholder="בגרות / תואר / ..."></div>
+        <div class="form-group"><label>מחזור</label><input class="edit-input" id="na-cohort" value="${new Date().toLocaleDateString('he-IL',{month:'2-digit',year:'numeric'})}"></div>
+        <div class="form-group"><label>תאריך סיום מתוכנן</label><input class="edit-input" id="na-end" placeholder="DD.MM.YYYY"></div>
+      </div>
+      <div class="form-group"><label>תמונה (אופציונלי)</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="photo-wrap" id="na-photo-wrap" style="width:70px;height:70px" onclick="document.getElementById('na-photo-input').click()">
+            <span class="photo-placeholder" id="na-photo-text" style="font-size:24px">👤</span>
+            <div class="photo-overlay"><span>העלה</span></div>
+          </div>
+          <input type="file" id="na-photo-input" accept="image/*" style="display:none" onchange="previewAddPhoto(event)">
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('na-photo-input').click()">📷 העלה תמונה</button>
+        </div>
+      </div>
+      <div style="background:rgba(0,59,142,.08);border:1px solid rgba(0,59,142,.2);border-radius:var(--r2);padding:12px;font-size:13px;color:var(--text2);margin-bottom:16px">
+        <strong style="color:var(--text)">סיסמת כניסה ראשונית:</strong> שם המשתמש + 123<br>
+        לדוגמה: שם משתמש <code>cohen</code> → סיסמה <code>cohen123</code>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="document.getElementById('add-modal').remove()">ביטול</button>
+        <button class="btn btn-primary" onclick="confirmAddTrainee()">➕ הוסף חניך</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+  document.getElementById('na-name').focus();
+}
+
+let _addPhotoData = null;
+function previewAddPhoto(e){
+  const file=e.target.files[0]; if(!file) return;
+  if(file.size>5*1024*1024){ showToast('התמונה גדולה מדי (מקסימום 5MB)','error'); return; }
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    _addPhotoData=ev.target.result;
+    const wrap=document.getElementById('na-photo-wrap');
+    wrap.innerHTML=`<img src="${_addPhotoData}" style="width:100%;height:100%;object-fit:cover">
+      <div class="photo-overlay"><span>החלף</span></div>`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function confirmAddTrainee(){
+  const name=document.getElementById('na-name').value.trim();
+  const uname=document.getElementById('na-uname').value.trim().replace(/\s+/g,'');
+  if(!name||!uname){ showToast('נא למלא שם ושם משתמש','error'); return; }
+  const users=getUsers();
+  if(users.find(u=>u.username===uname)){ showToast('שם משתמש כבר קיים — בחר אחר','error'); return; }
+  const emptyScores={
+    motivation:Array(4).fill(null).map(()=>[null,null]),
+    professionalism:Array(6).fill(null).map(()=>[null,null]),
+    discipline:Array(6).fill(null).map(()=>[null,null])
+  };
+  const cohort=document.getElementById('na-cohort').value||'06/2025';
+  const plannedEnd=document.getElementById('na-end').value||'29.09.2025';
+  const t=addTrainee({
+    name, username:uname, photo:_addPhotoData||null,
+    course:'קורס נהג משא ישיר', cohort, plannedEnd,
+    age:parseInt(document.getElementById('na-age').value)||null,
+    location:document.getElementById('na-location').value,
+    familyStatus:document.getElementById('na-family').value,
+    education:document.getElementById('na-edu').value,
+    status:'בהמתנה',
+    instructorEval:'', gaps:['','',''], recommendations:['','',''],
+    behavioralGap:'', rolefit:null,
+    theoryScores:{signals:null,jt42:null,euro4000:null,gm:[],routine:null,emergency:null,choms:null},
+    practicalTests:{jt42cw:['',''],gm:['',''],euro4000:['',''],signalsPractical:['','']},
+    evalDates:['16.07.25','29.09.25'],
+    scores:emptyScores
+  });
+  _addPhotoData=null;
+  document.getElementById('add-modal').remove();
+  buildTraineeNavLinks();
+  navigate('trainee', t.id);
+  setTimeout(()=>renderTraineeDetail(t.id, true), 50);
+  showToast(`החניך ${name} נוסף בהצלחה`,'success');
+}
+
+// ============================================================
+// PROFILE
+// ============================================================
+
+function renderProfile(){
+  const u=currentUser;
+  const roleMap={instructor:'מדריך',manager:'מנהל',trainee:'חניך'};
+  document.getElementById('profile-avatar').textContent=u.name.charAt(0);
+  document.getElementById('pf-name').textContent=u.name;
+  document.getElementById('pf-uname').textContent=u.username;
+  document.getElementById('pf-role').textContent=roleMap[u.role]||u.role;
+}
+
+// ============================================================
+// THEME
+// ============================================================
+
+function toggleTheme(){
+  isDark=!isDark;
+  document.documentElement.setAttribute('data-theme', isDark?'':'light');
+  const icon=document.getElementById('theme-icon');
+  if(isDark) icon.innerHTML='<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  else icon.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+  localStorage.setItem('ir_theme', isDark?'dark':'light');
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+
+function showLoading(show){
+  let el=document.getElementById('loading-overlay');
+  if(show){
+    if(!el){
+      el=document.createElement('div');
+      el.id='loading-overlay';
+      el.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px';
+      el.innerHTML='<div style="width:48px;height:48px;border:4px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite"></div><div style="color:#fff;font-size:16px;font-weight:600">טוען נתונים...</div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
+      document.body.appendChild(el);
+    }
+  } else {
+    if(el) el.remove();
+  }
+}
+
+function showToast(msg, type='info'){
+  const wrap=document.getElementById('toast-wrap');
+  const t=document.createElement('div');
+  t.className=`toast toast-${type}`;
+  const icons={success:'✅',error:'❌',info:'ℹ️'};
+  t.innerHTML=`<span>${icons[type]||'ℹ️'}</span><span>${msg}</span>`;
+  wrap.appendChild(t);
+  setTimeout(()=>{t.style.animation='fadeOut .3s ease forwards';setTimeout(()=>t.remove(),300)},3000);
+}
+
+// ============================================================
+// KEYBOARD
+// ============================================================
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter' && document.getElementById('login-screen') && !document.getElementById('login-screen').classList.contains('hidden')){
+    doLogin();
+  }
+});
+
+// ============================================================
+// PHOTO MANAGEMENT
+// ============================================================
+
+function previewPhoto(e, id){
+  const file=e.target.files[0]; if(!file) return;
+  if(file.size>5*1024*1024){ showToast('התמונה גדולה מדי (מקסימום 5MB)','error'); return; }
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const data=ev.target.result;
+    updateTrainee(id,{photo:data});
+    // Update preview in DOM without full re-render
+    const wrap=document.getElementById('photo-preview-wrap');
+    if(wrap){
+      const existing=wrap.querySelector('img');
+      if(existing){ existing.src=data; }
+      else {
+        wrap.innerHTML=`<img src="${data}" alt="" id="photo-preview-img">
+          <div class="photo-overlay"><span>החלף תמונה</span></div>`;
+      }
+    }
+    // Update header photo if visible
+    const hdrPhoto=document.querySelector('.photo-wrap-hdr img');
+    if(hdrPhoto) hdrPhoto.src=data;
+    showToast('התמונה הועלתה בהצלחה','success');
+  };
+  reader.readAsDataURL(file);
+}
+
+function removePhoto(id){
+  updateTrainee(id,{photo:null});
+  renderTraineeDetail(id, true);
+  showToast('התמונה הוסרה','info');
+}
+
+function openResetPassword(traineeId){
+  const users=getUsers();
+  const t=getTrainee(traineeId);
+  if(!t) return;
+  const html=`<div class="modal-overlay" id="reset-pw-modal" onclick="if(event.target===this)this.remove()">
+    <div class="modal">
+      <h3>🔑 איפוס סיסמה — ${t.name}</h3>
+      <div class="form-group"><label>סיסמה חדשה</label><input type="password" id="rp-new" class="edit-input" placeholder="לפחות 6 תווים"></div>
+      <div class="form-group"><label>אימות</label><input type="password" id="rp-confirm" class="edit-input"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="document.getElementById('reset-pw-modal').remove()">ביטול</button>
+        <button class="btn btn-primary" onclick="confirmResetPassword(${traineeId})">עדכן סיסמה</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+
+function confirmResetPassword(traineeId){
+  const nw=document.getElementById('rp-new').value;
+  const cf=document.getElementById('rp-confirm').value;
+  if(nw.length<6){ showToast('הסיסמה חייבת להכיל לפחות 6 תווים','error'); return; }
+  if(nw!==cf){ showToast('הסיסמאות אינן תואמות','error'); return; }
+  const t=getTrainee(traineeId);
+  const users=getUsers();
+  const idx=users.findIndex(u=>u.traineeId===traineeId);
+  if(idx>=0){ users[idx].password=nw; saveUsers(users); }
+  document.getElementById('reset-pw-modal').remove();
+  showToast(`הסיסמה של ${t?.name} עודכנה בהצלחה`,'success');
+}
+
+// ============================================================
+// EXCEL EXPORT
+// ============================================================
+
+const EXPORT_SERVER = 'http://localhost:7789';
+let serverOnline = false;
+
+async function checkServer(){
+  try{
+    const r = await fetch(`${EXPORT_SERVER}/ping`,{signal:AbortSignal.timeout(1500)});
+    serverOnline = r.ok;
+  }catch{ serverOnline=false; }
+  const el=document.getElementById('srv-status');
+  const lbl=document.getElementById('srv-label');
+  if(el&&lbl){
+    el.className=`server-status ${serverOnline?'srv-online':'srv-offline'}`;
+    lbl.textContent=serverOnline?'שרת פעיל':'שרת כבוי';
+  }
+}
+
+async function exportViaServer(trainees, filename){
+  const btn=event?.target; if(btn) btn.disabled=true;
+  showToast('מייצא קובץ Excel…','info');
+  try{
+    const resp = await fetch(`${EXPORT_SERVER}/export`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({trainees, filename})
+    });
+    if(!resp.ok){ const t=await resp.text(); throw new Error(t); }
+    const data = await resp.json();
+    // Open the saved file directly via the server
+    await fetch(`${EXPORT_SERVER}/open?file=${encodeURIComponent(data.saved)}`);
+    showToast(`✓ הקובץ נשמר ונפתח: ${data.saved}`, 'success');
+  }catch(err){
+    showToast('שגיאה בייצוא — האם שרת ה-Excel פועל? (הפעל מערכת.bat)','error');
+    console.error(err);
+  }finally{ if(btn) btn.disabled=false; }
+}
+
+function exportToExcel(){
+  const data=getData();
+  if(!data.length){ showToast('אין נתונים לייצוא','warn'); return; }
+  if(serverOnline){
+    exportViaServer(data,'ניהול ביצועי חניך קורס ישיר נהג משא.xlsx');
+  } else {
+    showToast('שרת ה-Excel כבוי — הפעל את "הפעל מערכת.bat" לייצוא מדויק','error');
+  }
+}
+
+function exportSingleTrainee(id){
+  const t=getTrainee(id); if(!t) return;
+  if(serverOnline){
+    exportViaServer([t],`ניהול ביצועי חניך - ${t.name}.xlsx`);
+  } else {
+    showToast('שרת ה-Excel כבוי — הפעל את "הפעל מערכת.bat" לייצוא מדויק','error');
+  }
+}
+
+
+// ============================================================
+// BOOT
+// ============================================================
+
+(async function init(){
+  const savedTheme=localStorage.getItem('ir_theme');
+  if(savedTheme==='light'){ isDark=false; document.documentElement.setAttribute('data-theme','light'); }
+  const session=localStorage.getItem('ir_session');
+  if(session){
+    try{
+      const s=JSON.parse(session);
+      const users=getUsers();
+      const u=users.find(x=>x.id===s.id&&x.username===s.username);
+      if(u){ currentUser=u; await initApp(); }
+    }catch(e){}
+  }
+  checkServer();
+  setInterval(checkServer, 5000);
+})();
+</script>
+</body>
+</html>
