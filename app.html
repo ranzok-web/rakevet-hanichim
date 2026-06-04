@@ -829,6 +829,7 @@ function refreshCurrentView(){
   if(currentView==='dashboard') renderDashboard();
   else if(currentView==='trainees') renderTraineesTable();
   else if(currentView==='trainee' && currentTraineeId && !isEditMode) renderTraineeDetail(currentTraineeId, false);
+  else if(currentView==='syllabus') renderSyllabus();
   if(currentUser && (currentUser.role==='instructor'||currentUser.role==='manager')) buildTraineeNavLinks();
 }
 
