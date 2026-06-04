@@ -6,6 +6,7 @@
 <title>מערכת ניהול ביצועי חניך | הכשרת נהגי משא</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -398,9 +399,6 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
   <div class="hdr-divider"></div>
   <div class="hdr-title">מערכת ניהול ביצועי חניך</div>
   <div class="hdr-actions">
-    <div class="server-status srv-offline" id="srv-status" title="שרת ייצוא Excel — הפעל הפעל מערכת.bat">
-      <div class="srv-dot"></div><span id="srv-label">שרת כבוי</span>
-    </div>
     <button class="icon-btn" onclick="toggleTheme()" title="החלף ערכת נושא">
       <svg id="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
@@ -1766,62 +1764,194 @@ function confirmResetPassword(traineeId){
 }
 
 // ============================================================
-// EXCEL EXPORT
+// EXCEL EXPORT — browser-based, no server needed
 // ============================================================
 
-const EXPORT_SERVER = 'http://localhost:7789';
-let serverOnline = false;
+const TEMPLATE_URL = 'https://ranzok-web.github.io/rakevet-hanichim/template.xlsx';
 
-async function checkServer(){
-  try{
-    const r = await fetch(`${EXPORT_SERVER}/ping`,{signal:AbortSignal.timeout(1500)});
-    serverOnline = r.ok;
-  }catch{ serverOnline=false; }
-  const el=document.getElementById('srv-status');
-  const lbl=document.getElementById('srv-label');
-  if(el&&lbl){
-    el.className=`server-status ${serverOnline?'srv-online':'srv-offline'}`;
-    lbl.textContent=serverOnline?'שרת פעיל':'שרת כבוי';
+function checkServer(){} // no-op — server no longer needed
+
+function xmlEscape(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function makeReplacement(tag, value){
+  tag = tag.replace(/\s+t="[^"]*"/g,'');
+  if(value===null||value===''||value===undefined) return tag+'/>';
+  if(typeof value==='number'){
+    return tag+`><v>${value}</v></c>`;
   }
+  if(typeof value==='string'&&value.startsWith('=')){
+    return tag+`><f>${xmlEscape(value.slice(1))}</f></c>`;
+  }
+  const text=xmlEscape(String(value)).replace(/\n/g,'&#10;');
+  tag=tag.trimEnd()+' t="inlineStr"';
+  return tag+`><is><t xml:space="preserve">${text}</t></is></c>`;
 }
 
-async function exportViaServer(trainees, filename){
-  const btn=event?.target; if(btn) btn.disabled=true;
-  showToast('מייצא קובץ Excel…','info');
-  try{
-    const resp = await fetch(`${EXPORT_SERVER}/export`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({trainees, filename})
-    });
-    if(!resp.ok){ const t=await resp.text(); throw new Error(t); }
-    const data = await resp.json();
-    // Open the saved file directly via the server
-    await fetch(`${EXPORT_SERVER}/open?file=${encodeURIComponent(data.saved)}`);
-    showToast(`✓ הקובץ נשמר ונפתח: ${data.saved}`, 'success');
-  }catch(err){
-    showToast('שגיאה בייצוא — האם שרת ה-Excel פועל? (הפעל מערכת.bat)','error');
-    console.error(err);
-  }finally{ if(btn) btn.disabled=false; }
+function updateCells(content, updates){
+  for(const [ref, value] of Object.entries(updates)){
+    const r=ref.toUpperCase();
+    const pat=new RegExp(`(<c\\b[^>]*?\\br="${r}"[^>]*?)(/\\s*>|>[\\s\\S]*?</c>)`,'g');
+    content=content.replace(pat,(_,tag)=>makeReplacement(tag,value));
+  }
+  return content;
 }
 
-function exportToExcel(){
+function buildUpdatesJS(t){
+  const d={};
+  const s=(ref,val)=>{ d[ref]=(val!==null&&val!==undefined&&val!=='')?val:''; };
+  const n=(ref,val)=>{
+    const v=parseFloat(val);
+    if(val!==null&&val!==''&&val!==undefined&&!isNaN(v)) d[ref]=v; else d[ref]='';
+  };
+
+  s('C3',t.name||''); s('C4',t.course||''); s('C5',t.cohort||'');
+  s('C7',`ניהול ביצועי חניך במהלך קורס - חוו"ד מרוכזת מעודכן לתאריך:${t.plannedEnd||''} `);
+  s('C8',t.instructorEval||'');
+
+  const gaps=t.gaps||['','',''];
+  s('C10',gaps[0]||''); s('C11',gaps[1]||''); s('C12',gaps[2]||'');
+
+  const recs=t.recommendations||['','',''];
+  s('C14',recs[0]||''); s('C15',recs[1]||''); s('C16',recs[2]||'');
+
+  s('I14',`גיל:${t.age||''} \nמצב משפחתי:${t.familyStatus||''} \nמתחם: ${t.location||''}\nהשכלה:${t.education||''} \n`);
+  s('I8',''); s('C18',t.behavioralGap||'');
+
+  const ts=t.theoryScores||{};
+  const gm=Array.isArray(ts.gm)?ts.gm:[ts.gm];
+  n('C25',ts.signals); n('D25',ts.jt42); n('E25',ts.euro4000);
+  n('F25',gm[0]); n('G25',ts.routine); n('H25',ts.emergency); n('I25',ts.choms);
+  if(gm.length>1&&gm[1]!==null&&gm[1]!=='') n('F26',gm[1]);
+
+  const pt=t.practicalTests||{};
+  for(const [col,key] of [['C','jt42cw'],['D','gm'],['E','euro4000'],['F','signalsPractical']]){
+    const arr=pt[key]||['',''];
+    s(`${col}30`,arr[0]||''); s(`${col}31`,arr[1]!==undefined?arr[1]:'');
+  }
+
+  const dates=t.evalDates||['',''];
+  s('I37',dates[0]||''); s('J37',dates[1]||'');
+
+  const writeScores=(catKey,rows)=>{
+    const cat=(t.scores||{})[catKey]||[];
+    rows.forEach((row,i)=>{ const pair=cat[i]||[null,null]; n(`I${row}`,pair[0]); n(`J${row}`,pair[1]); });
+  };
+  writeScores('motivation',[38,39,40,41]);
+  writeScores('professionalism',[44,45,46,47,48,49]);
+  writeScores('discipline',[52,53,54,55,56,57]);
+
+  d['I42']='=(I41+I40+I39+I38)/4'; d['J42']='=(J41+J40+J39+J38)/4';
+  d['I50']='=(I49+I48+I47+I46+I45+I44)/6'; d['J50']='=(J49+J48+J47+J46+J45+J44)/6';
+  d['I58']='=(I57+I56+I55+I54+I53+I52)/6'; d['J58']='=(J57+J56+J55+J54+J53+J52)/6';
+  d['I59']='=(I42*0.4)+(I50*0.55)+(I58*0.05)'; d['J59']='=(J42*0.4)+(J50*0.55)+(J58*0.05)';
+  return d;
+}
+
+function sanitizeSheetName(name){
+  return name.slice(0,31).replace(/[:/\\?*\[\]]/g,'');
+}
+
+async function generateExcelInBrowser(trainees){
+  const resp=await fetch(TEMPLATE_URL);
+  if(!resp.ok) throw new Error('לא ניתן לטעון את קובץ התבנית');
+  const buf=await resp.arrayBuffer();
+
+  const origZip=await JSZip.loadAsync(buf);
+  const wbXml=await origZip.file('xl/workbook.xml').async('text');
+  const relsXml=await origZip.file('xl/_rels/workbook.xml.rels').async('text');
+
+  const sheetEntries=[...wbXml.matchAll(/<sheet\b[^>]*?name="([^"]+)"[^>]*?sheetId="(\d+)"[^>]*?r:id="([^"]+)"/g)]
+    .map(m=>({name:m[1],sheetId:parseInt(m[2]),rId:m[3]}));
+
+  const rels={};
+  for(const m of relsXml.matchAll(/<Relationship\b[^>]*?Id="([^"]+)"[^>]*?Target="([^"]+)"/g)) rels[m[1]]=m[2];
+
+  const origSheets=sheetEntries.map(s=>{
+    let t=rels[s.rId]||'';
+    let path=t.startsWith('/xl/')?t.slice(1):t.startsWith('xl/')?t:'xl/'+t;
+    return {...s,path};
+  });
+
+  const templateSheet=origSheets.find(s=>s.name==='חניך');
+  const dataSheets=origSheets.filter(s=>s.name!=='חניך');
+  const styleSrc=dataSheets[0]||origSheets[0];
+
+  const outZip=new JSZip();
+  const managed=new Set(['xl/workbook.xml','xl/_rels/workbook.xml.rels']);
+  const newSheets=[];
+
+  for(let i=0;i<trainees.length;i++){
+    const t=trainees[i];
+    const safeName=sanitizeSheetName(t.name||'חניך חדש');
+    const src=i<dataSheets.length?dataSheets[i]:styleSrc;
+    let wsContent=await origZip.file(src.path).async('text');
+    wsContent=updateCells(wsContent,buildUpdatesJS(t));
+    const outPath=i<dataSheets.length?src.path:`xl/worksheets/sheet_extra${i}.xml`;
+    outZip.file(outPath,wsContent);
+    managed.add(outPath);
+    newSheets.push({name:safeName,sheetId:i<dataSheets.length?src.sheetId:900+i,rId:i<dataSheets.length?src.rId:`rIdExtra${i}`,path:outPath});
+  }
+
+  if(templateSheet){
+    const tb=await origZip.file(templateSheet.path).async('uint8array');
+    outZip.file(templateSheet.path,tb); managed.add(templateSheet.path);
+    newSheets.push(templateSheet);
+  }
+
+  const unusedPaths=new Set(dataSheets.slice(trainees.length).map(s=>s.path));
+
+  for(const [name,file] of Object.entries(origZip.files)){
+    if(managed.has(name)||unusedPaths.has(name)||file.dir) continue;
+    if(name==='[Content_Types].xml'){
+      let ct=await file.async('text');
+      for(const p of unusedPaths) ct=ct.replace(new RegExp(`<Override[^>]*PartName="/${p.replace(/\//g,'\\/')}"[^/]*/?>`),'');
+      outZip.file(name,ct);
+    } else {
+      outZip.file(name,await file.async('uint8array'));
+    }
+  }
+
+  const sheetsXml='<sheets>'+newSheets.map(s=>`<sheet name="${xmlEscape(s.name)}" sheetId="${s.sheetId}" r:id="${s.rId}"/>`).join('')+'</sheets>';
+  outZip.file('xl/workbook.xml',wbXml.replace(/<sheets>[\s\S]*?<\/sheets>/,sheetsXml));
+
+  let newRels=relsXml;
+  for(const s of dataSheets.slice(trainees.length))
+    newRels=newRels.replace(new RegExp(`<Relationship\\b[^>]*?Id="${s.rId}"[^>]*/?>`),'');
+  for(const s of newSheets)
+    if(!rels[s.rId])
+      newRels=newRels.replace('</Relationships>',`<Relationship Id="${s.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="${s.path.replace('xl/','')}"/></Relationships>`);
+  outZip.file('xl/_rels/workbook.xml.rels',newRels);
+
+  return outZip.generateAsync({type:'blob',compression:'DEFLATE'});
+}
+
+async function exportToExcel(){
   const data=getData();
   if(!data.length){ showToast('אין נתונים לייצוא','warn'); return; }
-  if(serverOnline){
-    exportViaServer(data,'ניהול ביצועי חניך קורס ישיר נהג משא.xlsx');
-  } else {
-    showToast('שרת ה-Excel כבוי — הפעל את "הפעל מערכת.bat" לייצוא מדויק','error');
-  }
+  showToast('מייצא קובץ Excel…','info');
+  try{
+    const blob=await generateExcelInBrowser(data);
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url;
+    a.download='ניהול ביצועי חניך קורס ישיר נהג משא.xlsx'; a.click();
+    URL.revokeObjectURL(url);
+    showToast('הקובץ יוצא בהצלחה ✓','success');
+  }catch(err){ console.error(err); showToast('שגיאה בייצוא: '+err.message,'error'); }
 }
 
-function exportSingleTrainee(id){
-  const t=getTrainee(id); if(!t) return;
-  if(serverOnline){
-    exportViaServer([t],`ניהול ביצועי חניך - ${t.name}.xlsx`);
-  } else {
-    showToast('שרת ה-Excel כבוי — הפעל את "הפעל מערכת.bat" לייצוא מדויק','error');
-  }
+async function exportSingleTrainee(id){
+  const t=getTrainee(id); if(!t){ showToast('חניך לא נמצא','error'); return; }
+  showToast('מייצא קובץ Excel…','info');
+  try{
+    const blob=await generateExcelInBrowser([t]);
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url;
+    a.download=`ניהול ביצועי חניך - ${t.name}.xlsx`; a.click();
+    URL.revokeObjectURL(url);
+    showToast(`הקובץ של ${t.name} יוצא בהצלחה ✓`,'success');
+  }catch(err){ console.error(err); showToast('שגיאה בייצוא: '+err.message,'error'); }
 }
 
 
