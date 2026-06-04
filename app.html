@@ -390,7 +390,7 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
 <div id="app" class="hidden">
 
 <header>
-  <div class="hdr-logo">
+  <div class="hdr-logo" onclick="navigate('dashboard')" style="cursor:pointer" title="חזור ללוח בקרה">
     <div class="logo-badge">
       <svg viewBox="0 0 28 28" fill="none"><rect x="2" y="10" width="24" height="3" rx="1.5" fill="#fff"/><rect x="2" y="15" width="24" height="3" rx="1.5" fill="#fff"/><rect x="9" y="7" width="3" height="14" rx="1.5" fill="#fff"/><rect x="16" y="7" width="3" height="14" rx="1.5" fill="#fff"/></svg>
       <div class="logo-names"><div class="l1">רכבת ישראל</div><div class="l2">חטיבת מטענים</div></div>
@@ -448,6 +448,9 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
       <div class="page-sub" id="dash-sub">קורס נהג משא ישיר | מחזור אפריל 2026</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-outline" id="btn-import" onclick="openImportModal()" style="display:none">
+        📤 ייבוא נתונים
+      </button>
       <button class="btn btn-outline" id="btn-export-all" onclick="exportToExcel()" style="display:none">
         📥 ייצוא Excel
       </button>
@@ -945,6 +948,7 @@ async function initApp(){
   document.getElementById('nav-trainees').style.display=canSeeAll?'':'none';
   document.getElementById('btn-add-trainee').style.display=canSeeAll?'':'none';
   document.getElementById('btn-export-all').style.display=canSeeAll?'':'none';
+  document.getElementById('btn-import').style.display=canSeeAll?'':'none';
   const nlEl=document.getElementById('nav-trainee-links');
   if(canSeeAll){
     nlEl.style.display='block';
@@ -1956,6 +1960,182 @@ async function exportSingleTrainee(id){
   }catch(err){ console.error(err); showToast('שגיאה בייצוא: '+err.message,'error'); }
 }
 
+
+// ============================================================
+// IMPORT DATA
+// ============================================================
+
+const IMPORT_FIELDS = [
+  {key:'theory.signals',    label:'עיוני — סימנורים',               type:'number'},
+  {key:'theory.jt42',       label:'עיוני — JT42',                   type:'number'},
+  {key:'theory.euro4000',   label:'עיוני — EURO 4000',              type:'number'},
+  {key:'theory.gm.0',       label:'עיוני — GM ניסיון 1',            type:'number'},
+  {key:'theory.gm.1',       label:'עיוני — GM ניסיון 2',            type:'number'},
+  {key:'theory.routine',    label:'עיוני — הוראות שגרה ועיתוק',     type:'number'},
+  {key:'theory.emergency',  label:'עיוני — הוראות בחירום',          type:'number'},
+  {key:'theory.choms',      label:'עיוני — חומ"ס',                  type:'number'},
+  {key:'practical.jt42cw.0',          label:'מעשי — JT42CW ניסיון 1',          type:'passfall'},
+  {key:'practical.jt42cw.1',          label:'מעשי — JT42CW ניסיון 2',          type:'passfall'},
+  {key:'practical.gm.0',              label:'מעשי — GM ניסיון 1',              type:'passfall'},
+  {key:'practical.gm.1',              label:'מעשי — GM ניסיון 2',              type:'passfall'},
+  {key:'practical.euro4000.0',        label:'מעשי — יורו 4000 ניסיון 1',       type:'passfall'},
+  {key:'practical.euro4000.1',        label:'מעשי — יורו 4000 ניסיון 2',       type:'passfall'},
+  {key:'practical.signalsPractical.0',label:'מעשי — סימנורים ניסיון 1',        type:'passfall'},
+  {key:'practical.signalsPractical.1',label:'מעשי — סימנורים ניסיון 2',        type:'passfall'},
+];
+
+let _importParsedData = [];
+let _importRows = [];
+
+function openImportModal(){
+  _importParsedData = []; _importRows = [];
+  const html=`<div class="modal-overlay" id="import-modal" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:700px;width:100%">
+      <h3>📤 ייבוא נתונים מקובץ Excel</h3>
+      <div class="alert alert-info" style="margin-bottom:16px">
+        העלה קובץ עם עמודת <strong>שם</strong> ועמודת <strong>ציון/תוצאה</strong>. המערכת תתאים אוטומטית לחניכים.
+      </div>
+      <div class="form-group">
+        <label>קובץ Excel / CSV</label>
+        <input type="file" id="import-file" accept=".xlsx,.xls,.csv" class="edit-input" onchange="parseImportFile(event)">
+      </div>
+      <div id="import-col-select" class="hidden">
+        <div class="grid2" style="margin-bottom:12px">
+          <div class="form-group" style="margin:0">
+            <label>עמודת השם</label>
+            <select id="import-name-col" class="edit-input" onchange="previewImport()"></select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>עמודת הציון / תוצאה</label>
+            <select id="import-val-col" class="edit-input" onchange="previewImport()"></select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:16px">
+          <label>שדה לעדכון</label>
+          <select id="import-field-sel" class="edit-input" onchange="previewImport()">
+            <option value="">— בחר שדה לעדכון —</option>
+            ${IMPORT_FIELDS.map(f=>`<option value="${f.key}">${f.label}</option>`).join('')}
+          </select>
+        </div>
+        <div id="import-preview"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="document.getElementById('import-modal').remove()">ביטול</button>
+        <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()" style="display:none">✅ ייבא נתונים</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function parseImportFile(e){
+  const file=e.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const data=new Uint8Array(ev.target.result);
+    const wb=XLSX.read(data,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    if(!rows.length){ showToast('הקובץ ריק','error'); return; }
+    const headers=rows[0].map((h,i)=>h?String(h):`עמודה ${i+1}`);
+    _importParsedData=rows.slice(1).filter(r=>r.some(c=>c!==''));
+    const nameCol=document.getElementById('import-name-col');
+    const valCol=document.getElementById('import-val-col');
+    nameCol.innerHTML=headers.map((h,i)=>`<option value="${i}">${h}</option>`).join('');
+    valCol.innerHTML=headers.map((h,i)=>`<option value="${i}">${h}</option>`).join('');
+    if(headers.length>1) valCol.value='1';
+    document.getElementById('import-col-select').classList.remove('hidden');
+    previewImport();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function matchTraineeName(name, trainees){
+  const u=String(name).trim();
+  let t=trainees.find(x=>x.name===u); if(t) return t;
+  t=trainees.find(x=>x.name.includes(u)||u.includes(x.name)); if(t) return t;
+  const first=u.split(' ')[0];
+  if(first.length>1){ t=trainees.find(x=>x.name.startsWith(first)); if(t) return t; }
+  return null;
+}
+
+function previewImport(){
+  const nameColIdx=parseInt(document.getElementById('import-name-col').value);
+  const valColIdx=parseInt(document.getElementById('import-val-col').value);
+  const fieldKey=document.getElementById('import-field-sel').value;
+  const previewEl=document.getElementById('import-preview');
+  const confirmBtn=document.getElementById('import-confirm-btn');
+  if(!fieldKey){ previewEl.innerHTML=''; confirmBtn.style.display='none'; return; }
+  const trainees=getData();
+  const field=IMPORT_FIELDS.find(f=>f.key===fieldKey);
+  _importRows=_importParsedData.map(row=>{
+    const name=String(row[nameColIdx]||'').trim();
+    const rawVal=row[valColIdx];
+    const trainee=matchTraineeName(name,trainees);
+    let value=rawVal;
+    if(field.type==='number') value=parseFloat(rawVal)||null;
+    if(field.type==='passfall'){
+      const s=String(rawVal).trim();
+      value=(s==='עבר'||s==='1'||s.toLowerCase()==='pass')?'עבר':(s==='לא עבר'||s==='0'||s.toLowerCase()==='fail')?'לא עבר':s;
+    }
+    return {name,value,trainee};
+  }).filter(r=>r.name);
+  const matched=_importRows.filter(r=>r.trainee).length;
+  previewEl.innerHTML=`
+    <div style="margin-bottom:10px;font-size:13px;color:var(--text2)">
+      נמצאו <strong style="color:var(--text)">${_importRows.length}</strong> שורות |
+      <strong style="color:var(--success)">${matched}</strong> הותאמו |
+      <strong style="color:var(--danger)">${_importRows.length-matched}</strong> לא הותאמו
+    </div>
+    <div class="table-wrap" style="max-height:260px;overflow-y:auto">
+    <table class="score-table">
+      <thead><tr><th>שם בקובץ</th><th>חניך מותאם</th><th>ערך</th><th>סטטוס</th></tr></thead>
+      <tbody>
+        ${_importRows.map((r,i)=>`<tr>
+          <td>${r.name}</td>
+          <td><select style="font-size:12px;padding:3px 6px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text)"
+                onchange="_importRows[${i}].trainee=getData().find(t=>t.id===parseInt(this.value))||null">
+            <option value="">— לא הותאם —</option>
+            ${trainees.map(t=>`<option value="${t.id}" ${r.trainee?.id===t.id?'selected':''}>${t.name}</option>`).join('')}
+          </select></td>
+          <td><strong>${r.value??'—'}</strong></td>
+          <td><span class="badge ${r.trainee?'badge-success':'badge-danger'}">${r.trainee?'✓':'✗'}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  confirmBtn.style.display=matched>0?'':'none';
+}
+
+function applyFieldToTrainee(trainee,fieldKey,value){
+  const parts=fieldKey.split('.');
+  const t=JSON.parse(JSON.stringify(trainee));
+  if(parts[0]==='theory'){
+    if(parts[1]==='gm'){
+      if(!Array.isArray(t.theoryScores.gm)) t.theoryScores.gm=[t.theoryScores.gm];
+      t.theoryScores.gm[parseInt(parts[2])]=value;
+    } else { t.theoryScores[parts[1]]=value; }
+  } else if(parts[0]==='practical'){
+    if(!Array.isArray(t.practicalTests[parts[1]])) t.practicalTests[parts[1]]=['',''];
+    t.practicalTests[parts[1]][parseInt(parts[2])]=value;
+  }
+  return t;
+}
+
+async function confirmImport(){
+  const fieldKey=document.getElementById('import-field-sel').value;
+  const toUpdate=_importRows.filter(r=>r.trainee&&r.value!==null&&r.value!=='');
+  if(!toUpdate.length){ showToast('אין שורות לייבוא','warn'); return; }
+  const data=getData();
+  let count=0;
+  for(const row of toUpdate){
+    const idx=data.findIndex(t=>t.id===row.trainee.id);
+    if(idx>=0){ data[idx]=applyFieldToTrainee(data[idx],fieldKey,row.value); count++; }
+  }
+  saveData(data);
+  document.getElementById('import-modal').remove();
+  showToast(`✓ עודכנו ${count} חניכים בהצלחה`,'success');
+  refreshCurrentView();
+}
 
 // ============================================================
 // BOOT
