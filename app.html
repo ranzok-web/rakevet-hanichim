@@ -2153,6 +2153,11 @@ function renderSyllabus(){
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <div style="font-size:14px">${isPast?'✅':isActive?'📌':'⏳'}</div>
+        ${canEdit?`<button onclick="event.stopPropagation();moveDayPrompt(${i})" title="העבר ליום אחר"
+          style="width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:transparent;
+          color:var(--text3);font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;
+          transition:.2s" onmouseover="this.style.background='rgba(0,59,142,.15)';this.style.color='var(--primary-light)'"
+          onmouseout="this.style.background='transparent';this.style.color='var(--text3)'">⇅</button>`:''}
         ${canEdit?`<button onclick="event.stopPropagation();openAddDayModal(${i})" title="הוסף יום אחרי יום ${i+1}"
           style="width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:transparent;
           color:var(--text3);font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;
@@ -2680,6 +2685,24 @@ async function confirmGanttSync(){
 // ============================================================
 // ADD / EDIT SYLLABUS DAY
 // ============================================================
+
+async function moveDayPrompt(fromIdx){
+  const rows = _syllabusCache?.rows||[];
+  const topic = rows[fromIdx]?.topic || `יום ${fromIdx+1}`;
+  const input = prompt(`"${topic}" נמצא ביום ${fromIdx+1}\nלאיזה יום להעביר? (1–${rows.length})`);
+  if(!input) return;
+  const toDay = parseInt(input);
+  if(isNaN(toDay)||toDay<1||toDay>rows.length){ showToast('מספר יום לא תקין','error'); return; }
+  const toIdx = toDay - 1;
+  if(toIdx === fromIdx) return;
+  const newRows = [...rows];
+  const [moved] = newRows.splice(fromIdx, 1);
+  newRows.splice(toIdx, 0, moved);
+  const recalc = recalculateSyllabusDates(newRows, _syllabusCache.courseStart, _syllabusCache.vacationDays);
+  await saveSyllabus({..._syllabusCache, rows:recalc});
+  showToast(`✓ "${topic}" הועבר ליום ${toDay}`, 'success');
+  renderSyllabus();
+}
 
 function openAddDayModal(afterIdx){
   // afterIdx = -1 means add at end, otherwise insert AFTER rows[afterIdx]
