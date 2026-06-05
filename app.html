@@ -2656,28 +2656,12 @@ async function confirmGanttSync(){
   const selectedVac = [...document.querySelectorAll('[id^="vac-cb-"]')]
     .filter(cb=>cb.checked).map(cb=>cb.value);
 
-  let rows = [..._syllabusCache.rows];
-
-  // Reorder rows to match Gantt topic order (fuzzy substring match)
-  if(topicOrder && topicOrder.length > 0){
-    const getRank = topic => {
-      if(!topic) return 9999;
-      const t = topic.trim();
-      for(let i=0; i<topicOrder.length; i++){
-        const g = topicOrder[i];
-        if(t === g || t.includes(g) || g.includes(t)) return i;
-      }
-      return 9999;
-    };
-    rows.sort((a,b) => getRank(a.topic) - getRank(b.topic));
-  }
-
+  const rows = [..._syllabusCache.rows];
   const newRows = recalculateSyllabusDates(rows, courseStart, selectedVac);
   const newSyllabus = {..._syllabusCache, rows:newRows, courseStart, vacationDays:selectedVac};
   await saveSyllabus(newSyllabus);
   document.getElementById('gantt-modal').remove();
-  const reordered = topicOrder?.length > 0 ? ' + סדר נושאים עודכן' : '';
-  showToast(`✓ הסילבוס סונכרן עם הגאנט — ${selectedVac.length} ימי חופש${reordered}`, 'success');
+  showToast(`✓ הסילבוס סונכרן עם הגאנט — ${selectedVac.length} ימי חופש`, 'success');
   _ganttResult=null;
   renderSyllabus();
 }
