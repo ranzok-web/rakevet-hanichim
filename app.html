@@ -2122,38 +2122,45 @@ function renderSyllabus(){
 
   // Scroll to today
   setTimeout(()=>{
+    const container = document.getElementById('syllabus-timeline');
     const todayEl = document.getElementById('syllabus-today');
-    if(todayEl){
-      const container = document.getElementById('syllabus-timeline');
-      const offset = todayEl.offsetTop - container.offsetHeight/2 + todayEl.offsetHeight/2;
-      container.scrollTop = Math.max(0, offset);
+    if(container && todayEl){
+      const cRect = container.getBoundingClientRect();
+      const tRect = todayEl.getBoundingClientRect();
+      container.scrollTop += (tRect.top - cRect.top) - (container.clientHeight/2) + (todayEl.clientHeight/2);
     }
-  }, 50);
+  }, 80);
 }
 
+let _tempVacDays = [];
+let _tempCourseStart = '';
+
 function openVacationModal(){
-  const vacs = (_syllabusCache?.vacationDays||[]);
-  const courseStart = _syllabusCache?.courseStart || '';
+  // Initialize from current cache every time modal opens
+  _tempVacDays = [...(_syllabusCache?.vacationDays||[])];
+  _tempCourseStart = _syllabusCache?.courseStart || '';
+  const needsStart = !_tempCourseStart;
+
   const html=`<div class="modal-overlay" id="vacation-modal" onclick="if(event.target===this)this.remove()">
-    <div class="modal" style="max-width:480px;width:100%">
+    <div class="modal" style="max-width:500px;width:100%">
       <h3>🏖️ ניהול ימי חופש</h3>
       <div class="alert alert-info" style="margin-bottom:16px">
-        הגדר תאריכים בהם הקורס לא יתקיים. הסילבוס יחשב מחדש אוטומטית ויתאים את כל התאריכים.
+        הוסף תאריכים בהם הקורס לא מתקיים. הסילבוס יחשב מחדש אוטומטית.
       </div>
-      ${courseStart?`<div style="font-size:13px;color:var(--text2);margin-bottom:14px">תאריך פתיחת קורס: <strong>${courseStart}</strong></div>`:''}
+      ${needsStart?`<div class="form-group">
+        <label>תאריך יום 1 של הקורס (DD/MM/YYYY)</label>
+        <input type="text" id="vac-course-start" class="edit-input" placeholder="DD/MM/YYYY" style="max-width:180px" oninput="_tempCourseStart=this.value">
+      </div>`:`<div style="font-size:13px;color:var(--text2);margin-bottom:14px">📅 פתיחת קורס: <strong>${_tempCourseStart}</strong></div>`}
       <div class="form-group">
         <label>הוסף יום חופש (DD/MM/YYYY)</label>
         <div style="display:flex;gap:8px">
-          <input type="text" id="vac-new-date" class="edit-input" placeholder="DD/MM/YYYY" style="flex:1">
+          <input type="text" id="vac-new-date" class="edit-input" placeholder="DD/MM/YYYY" style="flex:1"
+            onkeydown="if(event.key==='Enter')addVacationDay()">
           <button class="btn btn-primary btn-sm" onclick="addVacationDay()">הוסף</button>
         </div>
       </div>
-      <div id="vac-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
-        ${vacs.map(v=>`<div style="display:flex;align-items:center;gap:6px;background:rgba(227,30,36,.1);border:1px solid rgba(227,30,36,.3);border-radius:20px;padding:4px 12px;font-size:13px">
-          <span>${v}</span>
-          <span style="cursor:pointer;color:var(--danger);font-weight:700" onclick="removeVacationDay('${v}')">✕</span>
-        </div>`).join('')}
-        ${!vacs.length?'<div style="font-size:13px;color:var(--text3)">אין ימי חופש מוגדרים</div>':''}
+      <div id="vac-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;min-height:32px">
+        ${renderVacList(_tempVacDays)}
       </div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="document.getElementById('vacation-modal').remove()">ביטול</button>
@@ -2162,42 +2169,50 @@ function openVacationModal(){
     </div>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('vac-new-date').focus();
 }
 
-let _tempVacDays = null;
-function addVacationDay(){
-  const inp = document.getElementById('vac-new-date');
-  const val = inp.value.trim();
-  if(!val.match(/^\d{2}\/\d{2}\/\d{4}$/)){ showToast('פורמט שגוי — DD/MM/YYYY','error'); return; }
-  _tempVacDays = _tempVacDays || [...(_syllabusCache?.vacationDays||[])];
-  if(!_tempVacDays.includes(val)) _tempVacDays.push(val);
-  _tempVacDays.sort();
-  refreshVacList();
-  inp.value='';
-}
-function removeVacationDay(d){
-  _tempVacDays = _tempVacDays || [...(_syllabusCache?.vacationDays||[])];
-  _tempVacDays = _tempVacDays.filter(v=>v!==d);
-  refreshVacList();
-}
-function refreshVacList(){
-  const el = document.getElementById('vac-list');
-  el.innerHTML = _tempVacDays.length
-    ? _tempVacDays.map(v=>`<div style="display:flex;align-items:center;gap:6px;background:rgba(227,30,36,.1);border:1px solid rgba(227,30,36,.3);border-radius:20px;padding:4px 12px;font-size:13px">
-        <span>${v}</span><span style="cursor:pointer;color:var(--danger);font-weight:700" onclick="removeVacationDay('${v}')">✕</span>
+function renderVacList(days){
+  return days.length
+    ? days.map(v=>`<div style="display:flex;align-items:center;gap:6px;background:rgba(227,30,36,.1);border:1px solid rgba(227,30,36,.3);border-radius:20px;padding:4px 12px;font-size:13px">
+        <span>${v}</span><span style="cursor:pointer;color:var(--danger);font-weight:700;padding:0 2px" onclick="removeVacationDay('${v}')">✕</span>
       </div>`).join('')
     : '<div style="font-size:13px;color:var(--text3)">אין ימי חופש מוגדרים</div>';
 }
+
+function addVacationDay(){
+  const inp = document.getElementById('vac-new-date');
+  const val = (inp.value||'').trim();
+  if(!val.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)){
+    showToast('פורמט שגוי — DD/MM/YYYY','error'); return;
+  }
+  // Normalize to DD/MM/YYYY
+  const parts = val.split('/');
+  const norm = `${parts[0].padStart(2,'0')}/${parts[1].padStart(2,'0')}/${parts[2]}`;
+  if(!_tempVacDays.includes(norm)) _tempVacDays.push(norm);
+  _tempVacDays.sort((a,b)=>{
+    const pa=a.split('/'), pb=b.split('/');
+    return new Date(+pa[2],+pa[1]-1,+pa[0]) - new Date(+pb[2],+pb[1]-1,+pb[0]);
+  });
+  document.getElementById('vac-list').innerHTML = renderVacList(_tempVacDays);
+  inp.value=''; inp.focus();
+}
+
+function removeVacationDay(d){
+  _tempVacDays = _tempVacDays.filter(v=>v!==d);
+  document.getElementById('vac-list').innerHTML = renderVacList(_tempVacDays);
+}
+
 async function saveVacationDays(){
-  const vacs = _tempVacDays || (_syllabusCache?.vacationDays||[]);
-  const courseStart = _syllabusCache?.courseStart;
-  if(!courseStart){ showToast('חסר תאריך פתיחת קורס — העלה מחדש את הסילבוס','error'); return; }
-  const newRows = recalculateSyllabusDates(_syllabusCache.rows, courseStart, vacs);
-  const newSyllabus = {..._syllabusCache, rows:newRows, vacationDays:vacs};
+  const courseStart = _tempCourseStart || (_syllabusCache?.courseStart||'');
+  if(!courseStart || !courseStart.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)){
+    showToast('נא להזין תאריך פתיחת קורס תקין','error'); return;
+  }
+  const newRows = recalculateSyllabusDates(_syllabusCache.rows, courseStart, _tempVacDays);
+  const newSyllabus = {..._syllabusCache, rows:newRows, courseStart, vacationDays:[..._tempVacDays]};
   await saveSyllabus(newSyllabus);
-  _tempVacDays = null;
   document.getElementById('vacation-modal').remove();
-  showToast('✓ ימי החופש נשמרו והסילבוס עודכן','success');
+  showToast(`✓ הסילבוס עודכן — ${_tempVacDays.length} ימי חופש`,'success');
   renderSyllabus();
 }
 
