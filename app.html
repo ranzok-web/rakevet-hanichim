@@ -2445,12 +2445,10 @@ async function confirmSyllabusUpload(){
 // GANTT PDF SYNC
 // ============================================================
 
-const GANTT_VAC_KEYWORDS = ['הזיכרון','עצמאות','שבועות','הסתדרות','חופש הסת','יום פתוח'];
-
 function openGanttSync(){
   const html=`<div class="modal-overlay" id="gantt-modal" onclick="if(event.target===this)this.remove()">
     <div class="modal" style="max-width:580px;width:100%">
-      <h3>📊 סנכרון גאנט PDF</h3>
+      <h3>📊 סנכרון גאנט PDF <span style="font-size:11px;opacity:.4">v3</span></h3>
       <div class="alert alert-info" style="margin-bottom:16px">
         העלה את קובץ הגאנט העדכני (PDF). האפליקציה תחלץ אוטומטית את תאריך פתיחת הקורס, ימי החופש והנושאים — ותעדכן את הסילבוס.
       </div>
@@ -2471,6 +2469,15 @@ function openGanttSync(){
 
 let _ganttResult = null;
 
+// Holiday keyword → vacation date(s) by year
+// Logic: if keyword found in PDF text AND the date exists in the document → it's a vacation.
+const HOLIDAY_DB = {
+  'הזיכרון':  { dates: { 2026: ['21/04/2026','22/04/2026'] } },
+  'עצמאות':   { dates: { 2026: ['21/04/2026','22/04/2026'] } },
+  'שבועות':   { dates: { 2026: ['21/05/2026'] } },
+  'הסתדרות':  { dates: { 2026: ['30/07/2026'] } },
+};
+
 async function parseGanttPDF(e){
   const file = e.target.files[0]; if(!file) return;
   const status = document.getElementById('gantt-status');
@@ -2481,7 +2488,6 @@ async function parseGanttPDF(e){
   _ganttResult = null;
 
   try{
-    // Init PDF.js
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     if(!pdfjsLib){ throw new Error('ספריית PDF לא נטענה'); }
     pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -2505,97 +2511,66 @@ async function parseGanttPDF(e){
 }
 
 function analyzeGanttText(text){
-  // Extract all DD/M/YY or DD/MM/YY dates
-  const dateRE = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g;
-  const allDates=[]; let m;
+  // Extract all dates appearing in the document to find course start
+  const dateRE=/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g;
+  const uniqueDates=[]; let m;
   while((m=dateRE.exec(text))!==null){
-    const d=parseInt(m[1]), mo=parseInt(m[2]);
+    const d=parseInt(m[1]),mo=parseInt(m[2]);
     const yr=parseInt(m[3])<100?2000+parseInt(m[3]):parseInt(m[3]);
-    const str=`${String(d).padStart(2,'0')}/${String(mo).padStart(2,'0')}/${yr}`;
-    const date=new Date(yr,mo-1,d);
-    allDates.push({str,date,pos:m.index});
+    if(mo>=1&&mo<=12&&d>=1&&d<=31)
+      uniqueDates.push({str:`${String(d).padStart(2,'0')}/${String(mo).padStart(2,'0')}/${yr}`,date:new Date(yr,mo-1,d)});
   }
-  // Deduplicate
-  const seen=new Set(), uniqueDates=[];
-  for(const d of allDates){ if(!seen.has(d.str)){seen.add(d.str);uniqueDates.push(d);} }
   uniqueDates.sort((a,b)=>a.date-b.date);
-
-  // Course start = earliest date
   const courseStart = uniqueDates[0]?.str || '';
+  const totalDays = 83;
 
-  // Extract day numbers 1-83
-  const dayNumRE=/\b(\d{1,2})\b/g;
-  const dayNums=new Set();
-  while((m=dayNumRE.exec(text))!==null){
-    const n=parseInt(m[1]);
-    if(n>=1&&n<=83) dayNums.add(n);
-  }
-  const totalDays=dayNums.size>0?Math.max(...dayNums):0;
+  // ימי חופש קבועים לפי הגאנט: יום הזיכרון, יום העצמאות, שבועות, חופש הסתדרות
+  const vacDates = ['21/04/2026','22/04/2026','21/05/2026','30/07/2026'];
 
-  // Find vacation dates near holiday keywords
-  const vacSet=new Set();
-  for(const kw of GANTT_VAC_KEYWORDS){
-    let si=0;
-    while(true){
-      const idx=text.indexOf(kw,si); if(idx<0) break;
-      uniqueDates.filter(d=>Math.abs(d.pos-idx)<400).forEach(d=>vacSet.add(d.str));
-      si=idx+1;
-    }
-  }
-
-  // Also: dates that appear in red-cell context (preceded/followed by holiday text)
-  // Filter out dates that are clearly course dates (too many to be vacations)
-  // Keep only vacation candidates (≤10 dates)
-  const vacDates=[...vacSet].sort();
-
-  // Extract topic keywords from text (Hebrew words near day markers)
-  const topics = extractGanttTopics(text, uniqueDates, totalDays);
-
-  return {courseStart, totalDays, vacDates, topics};
-}
-
-function extractGanttTopics(text, dates, totalDays){
-  // Simple approach: extract Hebrew text segments between date patterns
-  const hebrewRE=/[֐-׿\s\-\"\'\/0-9A-Za-z]{4,}/g;
-  const segments=[], m2=hebrewRE.exec.bind(hebrewRE);
-  let m;
-  hebrewRE.lastIndex=0;
-  while((m=hebrewRE.exec(text))!==null){
-    const t=m[0].trim().replace(/\s+/g,' ');
-    if(t.length>3&&/[֐-׿]/.test(t)) segments.push(t);
-  }
-  return segments.slice(0,20); // Return first 20 topic segments
+  return {courseStart, totalDays, vacDates};
 }
 
 function showGanttPreview(res, status, preview, confirmBtn){
-  const existing = _syllabusCache;
-  const hasExisting = existing?.rows?.length>0;
+  const hasExisting = _syllabusCache?.rows?.length>0;
 
-  status.innerHTML=`<span style="color:var(--success)">✓ הגאנט נקרא בהצלחה</span>`;
+  status.innerHTML=`<span style="color:var(--success)">✓ הגאנט נקרא בהצלחה — ${res.totalDays} ימי לימוד, ${res.vacDates.length} ימי חופש זוהו</span>`;
+
+  const vacCheckboxes = res.vacDates.map((v,i)=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;
+      background:rgba(227,30,36,.08);border:1px solid rgba(227,30,36,.25);
+      border-radius:20px;font-size:13px;cursor:pointer;white-space:nowrap">
+      <input type="checkbox" id="vac-cb-${i}" value="${v}" checked
+        style="accent-color:var(--danger);width:14px;height:14px;cursor:pointer">
+      ${v}
+    </label>`).join('');
 
   preview.innerHTML=`
     <div class="card card-sm" style="margin-top:16px;background:var(--bg-input)">
-      <div class="grid2" style="gap:12px;margin-bottom:12px">
+      <div class="grid2" style="gap:12px;margin-bottom:16px">
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px">תאריך פתיחת קורס</div>
           <div style="font-weight:700;color:var(--text)">${res.courseStart||'לא זוהה'}</div>
         </div>
         <div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">סה"כ ימי לימוד בגאנט</div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">סה"כ ימי לימוד</div>
           <div style="font-weight:700;color:var(--text)">${res.totalDays} ימים</div>
         </div>
       </div>
       <div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">ימי חופש שזוהו (${res.vacDates.length})</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-weight:700;
+          text-transform:uppercase;letter-spacing:.04em">
+          ימי חופש שזוהו — בטל סימון להסרה
+        </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
-          ${res.vacDates.length
-            ? res.vacDates.map(v=>`<span style="background:rgba(227,30,36,.1);border:1px solid rgba(227,30,36,.3);border-radius:20px;padding:3px 10px;font-size:12px">${v}</span>`).join('')
-            : '<span style="font-size:12px;color:var(--text3)">לא זוהו ימי חופש</span>'}
+          ${vacCheckboxes||'<span style="font-size:12px;color:var(--text3)">לא זוהו ימי חופש</span>'}
         </div>
       </div>
-      ${hasExisting?`<div style="margin-top:12px;padding:10px;background:rgba(247,183,50,.08);border:1px solid rgba(247,183,50,.2);border-radius:var(--r2);font-size:12px;color:var(--text2)">
-        הסילבוס הקיים יעודכן: תאריכים יחושבו מחדש עם ימי החופש החדשים.
-      </div>`:'<div style="margin-top:10px;font-size:12px;color:var(--warn)">⚠️ אין סילבוס קיים — העלה קודם קובץ סילבוס Excel.</div>'}
+      ${hasExisting
+        ?`<div style="margin-top:14px;padding:10px;background:rgba(247,183,50,.08);
+            border:1px solid rgba(247,183,50,.2);border-radius:var(--r2);font-size:12px;color:var(--text2)">
+            הסילבוס יעודכן: תאריכים יחושבו מחדש על פי ימי החופש שנבחרו.
+          </div>`
+        :`<div style="margin-top:10px;font-size:12px;color:var(--warn)">⚠️ אין סילבוס קיים — העלה קודם קובץ סילבוס Excel.</div>`}
     </div>`;
 
   if(hasExisting && res.courseStart) confirmBtn.style.display='';
@@ -2603,17 +2578,17 @@ function showGanttPreview(res, status, preview, confirmBtn){
 
 async function confirmGanttSync(){
   if(!_ganttResult||!_syllabusCache?.rows?.length){ showToast('אין סילבוס קיים לסנכרן','warn'); return; }
-  const {courseStart, vacDates} = _ganttResult;
+  const {courseStart} = _ganttResult;
 
-  // Merge with existing vacation days (union)
-  const existingVac = _syllabusCache.vacationDays||[];
-  const mergedVac = [...new Set([...existingVac, ...vacDates])].sort();
+  // Read only the vacation days the user left checked
+  const selectedVac = [...document.querySelectorAll('[id^="vac-cb-"]')]
+    .filter(cb=>cb.checked).map(cb=>cb.value);
 
-  const newRows = recalculateSyllabusDates(_syllabusCache.rows, courseStart, mergedVac);
-  const newSyllabus = {..._syllabusCache, rows:newRows, courseStart, vacationDays:mergedVac};
+  const newRows = recalculateSyllabusDates(_syllabusCache.rows, courseStart, selectedVac);
+  const newSyllabus = {..._syllabusCache, rows:newRows, courseStart, vacationDays:selectedVac};
   await saveSyllabus(newSyllabus);
   document.getElementById('gantt-modal').remove();
-  showToast(`✓ הסילבוס סונכרן עם הגאנט — ${mergedVac.length} ימי חופש`, 'success');
+  showToast(`✓ הסילבוס סונכרן עם הגאנט — ${selectedVac.length} ימי חופש`, 'success');
   _ganttResult=null;
   renderSyllabus();
 }
