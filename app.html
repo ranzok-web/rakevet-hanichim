@@ -2495,14 +2495,43 @@ async function parseGanttPDF(e){
 
     const buf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+    const allItems = [];
     let fullText = '';
     for(let p=1; p<=pdf.numPages; p++){
       const page = await pdf.getPage(p);
+      const vp = page.getViewport({scale:1});
       const tc = await page.getTextContent();
-      fullText += tc.items.map(i=>i.str).join(' ') + '\n';
+      for(const item of tc.items){
+        const s = item.str.trim(); if(!s) continue;
+        fullText += s + ' ';
+        const [,,,, tx, ty] = item.transform;
+        const [vx, vy] = vp.convertToViewportPoint(tx, ty);
+        allItems.push({str:s, x:vx, y:vy, page:p});
+      }
+      fullText += '\n';
     }
 
-    _ganttResult = analyzeGanttText(fullText);
+    // Course start: earliest date in text
+    const dateRE=/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g;
+    const allDates=[]; let m;
+    while((m=dateRE.exec(fullText))!==null){
+      const d=parseInt(m[1]),mo=parseInt(m[2]);
+      const yr=parseInt(m[3])<100?2000+parseInt(m[3]):parseInt(m[3]);
+      if(mo>=1&&mo<=12&&d>=1&&d<=31) allDates.push(new Date(yr,mo-1,d));
+    }
+    allDates.sort((a,b)=>a-b);
+    const e0=allDates[0];
+    const courseStart=e0?`${String(e0.getDate()).padStart(2,'0')}/${String(e0.getMonth()+1).padStart(2,'0')}/${e0.getFullYear()}`:'';
+
+    const topicOrder = extractGanttTopicOrder(allItems);
+    console.log('[GANTT] topicOrder:', topicOrder);
+
+    _ganttResult = {
+      courseStart,
+      totalDays: 83,
+      vacDates: ['21/04/2026','22/04/2026','21/05/2026','30/07/2026'],
+      topicOrder
+    };
     showGanttPreview(_ganttResult, status, preview, confirmBtn);
   }catch(err){
     status.innerHTML=`<span style="color:var(--danger)">שגיאה: ${err.message}</span>`;
@@ -2510,24 +2539,61 @@ async function parseGanttPDF(e){
   }
 }
 
-function analyzeGanttText(text){
-  // Extract all dates appearing in the document to find course start
-  const dateRE=/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g;
-  const uniqueDates=[]; let m;
-  while((m=dateRE.exec(text))!==null){
-    const d=parseInt(m[1]),mo=parseInt(m[2]);
-    const yr=parseInt(m[3])<100?2000+parseInt(m[3]):parseInt(m[3]);
-    if(mo>=1&&mo<=12&&d>=1&&d<=31)
-      uniqueDates.push({str:`${String(d).padStart(2,'0')}/${String(mo).padStart(2,'0')}/${yr}`,date:new Date(yr,mo-1,d)});
+const _GANTT_SKIP = new Set(['Sun','Mon','Tue','Wed','Thu','Fri','Sat','מידע פנימי','#']);
+
+function extractGanttTopicOrder(items){
+  const dateRE=/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
+
+  const tagged=items.map(it=>{
+    if(_GANTT_SKIP.has(it.str)) return {...it,type:'skip'};
+    if(dateRE.test(it.str)) return {...it,type:'date'};
+    const nm=it.str.match(/^(\d{1,2})$/);
+    if(nm){const n=parseInt(nm[1]);if(n>=1&&n<=99)return {...it,type:'dayNum',n};}
+    return {...it,type:'text'};
+  });
+
+  // Cluster items into visual rows (same page + Y within 8pts)
+  const rows=[];
+  for(const it of [...tagged].sort((a,b)=>(a.page-b.page)*1e6+(a.y-b.y))){
+    const last=rows[rows.length-1];
+    if(!last||last.page!==it.page||Math.abs(it.y-last.y)>8)
+      rows.push({y:it.y,page:it.page,items:[it]});
+    else last.items.push(it);
   }
-  uniqueDates.sort((a,b)=>a.date-b.date);
-  const courseStart = uniqueDates[0]?.str || '';
-  const totalDays = 83;
 
-  // ימי חופש קבועים לפי הגאנט: יום הזיכרון, יום העצמאות, שבועות, חופש הסתדרות
-  const vacDates = ['21/04/2026','22/04/2026','21/05/2026','30/07/2026'];
+  const dayNumRows=rows.filter(r=>r.items.filter(i=>i.type==='dayNum').length>=3);
+  const topicMap={}; // dayNum -> topic string
 
-  return {courseStart, totalDays, vacDates};
+  for(const dnRow of dayNumRows){
+    const dayNums=dnRow.items.filter(i=>i.type==='dayNum');
+    // Topic rows: same page, just below dayNum row (within 180pts)
+    const topicRows=rows.filter(r=>
+      r.page===dnRow.page && r.y>dnRow.y+4 && r.y<dnRow.y+180 &&
+      r.items.some(i=>i.type==='text'&&i.str.length>1)
+    );
+    for(const tr of topicRows){
+      for(const ti of tr.items.filter(i=>i.type==='text'&&i.str.length>1)){
+        let best=null,bestD=Infinity;
+        for(const dn of dayNums){
+          const d=Math.abs(dn.x-ti.x);
+          if(d<bestD){bestD=d;best=dn;}
+        }
+        if(best&&bestD<100){
+          const n=best.n;
+          if(!topicMap[n]) topicMap[n]=ti.str;
+          else if(!topicMap[n].includes(ti.str)) topicMap[n]+=' '+ti.str;
+        }
+      }
+    }
+  }
+
+  // Build flat ordered topic list sorted by day number
+  const seen=new Set(), ordered=[];
+  for(const n of Object.keys(topicMap).map(Number).sort((a,b)=>a-b)){
+    const t=topicMap[n].trim();
+    if(t&&!seen.has(t)){seen.add(t);ordered.push(t);}
+  }
+  return ordered;
 }
 
 function showGanttPreview(res, status, preview, confirmBtn){
@@ -2578,17 +2644,33 @@ function showGanttPreview(res, status, preview, confirmBtn){
 
 async function confirmGanttSync(){
   if(!_ganttResult||!_syllabusCache?.rows?.length){ showToast('אין סילבוס קיים לסנכרן','warn'); return; }
-  const {courseStart} = _ganttResult;
+  const {courseStart, topicOrder} = _ganttResult;
 
-  // Read only the vacation days the user left checked
   const selectedVac = [...document.querySelectorAll('[id^="vac-cb-"]')]
     .filter(cb=>cb.checked).map(cb=>cb.value);
 
-  const newRows = recalculateSyllabusDates(_syllabusCache.rows, courseStart, selectedVac);
+  let rows = [..._syllabusCache.rows];
+
+  // Reorder rows to match Gantt topic order (fuzzy substring match)
+  if(topicOrder && topicOrder.length > 0){
+    const getRank = topic => {
+      if(!topic) return 9999;
+      const t = topic.trim();
+      for(let i=0; i<topicOrder.length; i++){
+        const g = topicOrder[i];
+        if(t === g || t.includes(g) || g.includes(t)) return i;
+      }
+      return 9999;
+    };
+    rows.sort((a,b) => getRank(a.topic) - getRank(b.topic));
+  }
+
+  const newRows = recalculateSyllabusDates(rows, courseStart, selectedVac);
   const newSyllabus = {..._syllabusCache, rows:newRows, courseStart, vacationDays:selectedVac};
   await saveSyllabus(newSyllabus);
   document.getElementById('gantt-modal').remove();
-  showToast(`✓ הסילבוס סונכרן עם הגאנט — ${selectedVac.length} ימי חופש`, 'success');
+  const reordered = topicOrder?.length > 0 ? ' + סדר נושאים עודכן' : '';
+  showToast(`✓ הסילבוס סונכרן עם הגאנט — ${selectedVac.length} ימי חופש${reordered}`, 'success');
   _ganttResult=null;
   renderSyllabus();
 }
