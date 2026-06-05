@@ -2182,7 +2182,30 @@ function renderSyllabus(){
       const tRect=todayEl.getBoundingClientRect();
       container.scrollTop+=(tRect.top-cRect.top)-(container.clientHeight/2)+(todayEl.clientHeight/2);
     }
+    // Enable mouse drag-to-scroll on desktop
+    if(container) initDragScroll(container);
   },100);
+}
+
+function initDragScroll(el){
+  if(el._dragInited) return;
+  el._dragInited=true;
+  el.style.cursor='grab';
+  let down=false, startY=0, scrollTop=0;
+  el.addEventListener('mousedown',e=>{
+    down=true; startY=e.clientY; scrollTop=el.scrollTop;
+    el.style.cursor='grabbing'; el.style.userSelect='none';
+  });
+  window.addEventListener('mouseup',()=>{
+    down=false; el.style.cursor='grab'; el.style.userSelect='';
+  });
+  el.addEventListener('mousemove',e=>{
+    if(!down) return;
+    e.preventDefault();
+    el.scrollTop=scrollTop-(e.clientY-startY)*1.2;
+  });
+  // Prevent click on items when dragging
+  el.addEventListener('click',e=>{ if(Math.abs(el.scrollTop-scrollTop)>5) e.stopPropagation(); },{capture:true});
 }
 
 let _tempVacDays = [];
