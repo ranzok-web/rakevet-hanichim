@@ -2660,7 +2660,16 @@ async function confirmAddDay(insertPos){
 
   const newRow = { date: dateVal, topic, details };
   const rows = [...(_syllabusCache?.rows||[])];
-  rows.splice(insertPos, 0, newRow);
+  // If a date was provided, insert at the correct chronological position
+  let pos = insertPos;
+  if(dateVal){
+    const newDate = parseDate(dateVal);
+    if(newDate){
+      pos = rows.findIndex(r => { const d=parseDate(r.date); return d && d>newDate; });
+      if(pos === -1) pos = rows.length;
+    }
+  }
+  rows.splice(pos, 0, newRow);
 
   const newSyllabus = {..._syllabusCache, rows};
   await saveSyllabus(newSyllabus);
