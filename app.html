@@ -2562,36 +2562,38 @@ function extractGanttTopicOrder(items){
   }
 
   const dayNumRows=rows.filter(r=>r.items.filter(i=>i.type==='dayNum').length>=3);
-  const topicMap={}; // dayNum -> topic string
+
+  // dayTopics[n] = array of {topic, dist} — one entry per text item near day n
+  const dayTopics={};
 
   for(const dnRow of dayNumRows){
     const dayNums=dnRow.items.filter(i=>i.type==='dayNum');
-    // Topic rows: same page, just below dayNum row (within 180pts)
     const topicRows=rows.filter(r=>
       r.page===dnRow.page && r.y>dnRow.y+4 && r.y<dnRow.y+180 &&
       r.items.some(i=>i.type==='text'&&i.str.length>1)
     );
     for(const tr of topicRows){
-      for(const ti of tr.items.filter(i=>i.type==='text'&&i.str.length>1)){
+      for(const ti of tr.items.filter(i=>i.type==='text'&&i.str.length>1&&i.str.length<=22)){
         let best=null,bestD=Infinity;
         for(const dn of dayNums){
           const d=Math.abs(dn.x-ti.x);
           if(d<bestD){bestD=d;best=dn;}
         }
-        if(best&&bestD<100){
+        if(best&&bestD<60){
           const n=best.n;
-          if(!topicMap[n]) topicMap[n]=ti.str;
-          else if(!topicMap[n].includes(ti.str)) topicMap[n]+=' '+ti.str;
+          if(!dayTopics[n]) dayTopics[n]=[];
+          dayTopics[n].push({topic:ti.str.trim(), dist:bestD});
         }
       }
     }
   }
 
-  // Build flat ordered topic list sorted by day number
+  // Build flat ordered list: sort by day number, then by distance within day
   const seen=new Set(), ordered=[];
-  for(const n of Object.keys(topicMap).map(Number).sort((a,b)=>a-b)){
-    const t=topicMap[n].trim();
-    if(t&&!seen.has(t)){seen.add(t);ordered.push(t);}
+  for(const n of Object.keys(dayTopics).map(Number).sort((a,b)=>a-b)){
+    for(const {topic} of dayTopics[n].sort((a,b)=>a.dist-b.dist)){
+      if(topic&&!seen.has(topic)){seen.add(topic);ordered.push(topic);}
+    }
   }
   return ordered;
 }
