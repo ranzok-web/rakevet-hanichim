@@ -7,6 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -498,7 +499,10 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
 <div id="view-syllabus" class="view">
   <div class="page-header">
     <div><div class="page-title">סילבוס הקורס</div><div class="page-sub">מסלול הלימודים ומעקב התקדמות</div></div>
-    <button class="btn btn-primary" id="btn-upload-syllabus" onclick="openSyllabusUpload()" style="display:none">📅 עדכן סילבוס</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-outline" id="btn-sync-gantt" onclick="openGanttSync()" style="display:none">📊 סנכרן גאנט PDF</button>
+      <button class="btn btn-primary" id="btn-upload-syllabus" onclick="openSyllabusUpload()" style="display:none">📅 עדכן סילבוס</button>
+    </div>
   </div>
   <div id="syllabus-content"></div>
 </div>
@@ -532,13 +536,8 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
 <footer>
   <div class="footer-text">
     <strong style="color:rgba(255,255,255,.7)">רכבת ישראל | חטיבת מטענים</strong><br>
-    מחלקת הדרכה ופיתוח עובדים &nbsp;|&nbsp; קורס נהג משא ישיר<br>
-    © 2025 כל הזכויות שמורות לרכבת ישראל
-  </div>
-  <div class="footer-contact">
-    <div style="color:rgba(255,255,255,.6);margin-bottom:2px">תמיכה טכנית:</div>
-    <a href="mailto:hdr.metanim@rail.co.il" style="color:rgba(255,255,255,.7)">hdr.metanim@rail.co.il</a><br>
-    <span style="color:rgba(255,255,255,.5)">מחלקת הדרכה | חטיבת מטענים</span>
+    אגף שינוע מטענים &nbsp;|&nbsp; קורס נהג משא ישיר<br>
+    © 2026 כל הזכויות שמורות לרכבת ישראל
   </div>
 </footer>
 
@@ -988,6 +987,7 @@ async function initApp(){
   document.getElementById('btn-export-all').style.display=canSeeAll?'':'none';
   document.getElementById('btn-import').style.display=canSeeAll?'':'none';
   document.getElementById('btn-upload-syllabus').style.display=canSeeAll?'':'none';
+  document.getElementById('btn-sync-gantt').style.display=canSeeAll?'':'none';
   const nlEl=document.getElementById('nav-trainee-links');
   if(canSeeAll){
     nlEl.style.display='block';
@@ -2428,6 +2428,183 @@ async function confirmSyllabusUpload(){
   document.getElementById('syllabus-modal').remove();
   showToast(`✓ הסילבוס הועלה — ${pRows.length} ימי לימוד`,'success');
   _pendingSyllabus=null;
+  renderSyllabus();
+}
+
+// ============================================================
+// GANTT PDF SYNC
+// ============================================================
+
+const GANTT_VAC_KEYWORDS = ['הזיכרון','עצמאות','שבועות','הסתדרות','חופש הסת','יום פתוח'];
+
+function openGanttSync(){
+  const html=`<div class="modal-overlay" id="gantt-modal" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:580px;width:100%">
+      <h3>📊 סנכרון גאנט PDF</h3>
+      <div class="alert alert-info" style="margin-bottom:16px">
+        העלה את קובץ הגאנט העדכני (PDF). האפליקציה תחלץ אוטומטית את תאריך פתיחת הקורס, ימי החופש והנושאים — ותעדכן את הסילבוס.
+      </div>
+      <div class="form-group">
+        <label>קובץ גאנט (PDF)</label>
+        <input type="file" id="gantt-file" accept=".pdf" class="edit-input" onchange="parseGanttPDF(event)">
+      </div>
+      <div id="gantt-status" style="font-size:13px;color:var(--text2);min-height:20px"></div>
+      <div id="gantt-preview"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="document.getElementById('gantt-modal').remove()">ביטול</button>
+        <button class="btn btn-primary" id="gantt-confirm-btn" onclick="confirmGanttSync()" style="display:none">✅ עדכן סילבוס</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+let _ganttResult = null;
+
+async function parseGanttPDF(e){
+  const file = e.target.files[0]; if(!file) return;
+  const status = document.getElementById('gantt-status');
+  const preview = document.getElementById('gantt-preview');
+  const confirmBtn = document.getElementById('gantt-confirm-btn');
+  status.textContent = '⏳ קורא קובץ PDF...';
+  preview.innerHTML=''; confirmBtn.style.display='none';
+  _ganttResult = null;
+
+  try{
+    // Init PDF.js
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    if(!pdfjsLib){ throw new Error('ספריית PDF לא נטענה'); }
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+    let fullText = '';
+    for(let p=1; p<=pdf.numPages; p++){
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      fullText += tc.items.map(i=>i.str).join(' ') + '\n';
+    }
+
+    _ganttResult = analyzeGanttText(fullText);
+    showGanttPreview(_ganttResult, status, preview, confirmBtn);
+  }catch(err){
+    status.innerHTML=`<span style="color:var(--danger)">שגיאה: ${err.message}</span>`;
+    console.error(err);
+  }
+}
+
+function analyzeGanttText(text){
+  // Extract all DD/M/YY or DD/MM/YY dates
+  const dateRE = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g;
+  const allDates=[]; let m;
+  while((m=dateRE.exec(text))!==null){
+    const d=parseInt(m[1]), mo=parseInt(m[2]);
+    const yr=parseInt(m[3])<100?2000+parseInt(m[3]):parseInt(m[3]);
+    const str=`${String(d).padStart(2,'0')}/${String(mo).padStart(2,'0')}/${yr}`;
+    const date=new Date(yr,mo-1,d);
+    allDates.push({str,date,pos:m.index});
+  }
+  // Deduplicate
+  const seen=new Set(), uniqueDates=[];
+  for(const d of allDates){ if(!seen.has(d.str)){seen.add(d.str);uniqueDates.push(d);} }
+  uniqueDates.sort((a,b)=>a.date-b.date);
+
+  // Course start = earliest date
+  const courseStart = uniqueDates[0]?.str || '';
+
+  // Extract day numbers 1-83
+  const dayNumRE=/\b(\d{1,2})\b/g;
+  const dayNums=new Set();
+  while((m=dayNumRE.exec(text))!==null){
+    const n=parseInt(m[1]);
+    if(n>=1&&n<=83) dayNums.add(n);
+  }
+  const totalDays=dayNums.size>0?Math.max(...dayNums):0;
+
+  // Find vacation dates near holiday keywords
+  const vacSet=new Set();
+  for(const kw of GANTT_VAC_KEYWORDS){
+    let si=0;
+    while(true){
+      const idx=text.indexOf(kw,si); if(idx<0) break;
+      uniqueDates.filter(d=>Math.abs(d.pos-idx)<400).forEach(d=>vacSet.add(d.str));
+      si=idx+1;
+    }
+  }
+
+  // Also: dates that appear in red-cell context (preceded/followed by holiday text)
+  // Filter out dates that are clearly course dates (too many to be vacations)
+  // Keep only vacation candidates (≤10 dates)
+  const vacDates=[...vacSet].sort();
+
+  // Extract topic keywords from text (Hebrew words near day markers)
+  const topics = extractGanttTopics(text, uniqueDates, totalDays);
+
+  return {courseStart, totalDays, vacDates, topics};
+}
+
+function extractGanttTopics(text, dates, totalDays){
+  // Simple approach: extract Hebrew text segments between date patterns
+  const hebrewRE=/[֐-׿\s\-\"\'\/0-9A-Za-z]{4,}/g;
+  const segments=[], m2=hebrewRE.exec.bind(hebrewRE);
+  let m;
+  hebrewRE.lastIndex=0;
+  while((m=hebrewRE.exec(text))!==null){
+    const t=m[0].trim().replace(/\s+/g,' ');
+    if(t.length>3&&/[֐-׿]/.test(t)) segments.push(t);
+  }
+  return segments.slice(0,20); // Return first 20 topic segments
+}
+
+function showGanttPreview(res, status, preview, confirmBtn){
+  const existing = _syllabusCache;
+  const hasExisting = existing?.rows?.length>0;
+
+  status.innerHTML=`<span style="color:var(--success)">✓ הגאנט נקרא בהצלחה</span>`;
+
+  preview.innerHTML=`
+    <div class="card card-sm" style="margin-top:16px;background:var(--bg-input)">
+      <div class="grid2" style="gap:12px;margin-bottom:12px">
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">תאריך פתיחת קורס</div>
+          <div style="font-weight:700;color:var(--text)">${res.courseStart||'לא זוהה'}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">סה"כ ימי לימוד בגאנט</div>
+          <div style="font-weight:700;color:var(--text)">${res.totalDays} ימים</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">ימי חופש שזוהו (${res.vacDates.length})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${res.vacDates.length
+            ? res.vacDates.map(v=>`<span style="background:rgba(227,30,36,.1);border:1px solid rgba(227,30,36,.3);border-radius:20px;padding:3px 10px;font-size:12px">${v}</span>`).join('')
+            : '<span style="font-size:12px;color:var(--text3)">לא זוהו ימי חופש</span>'}
+        </div>
+      </div>
+      ${hasExisting?`<div style="margin-top:12px;padding:10px;background:rgba(247,183,50,.08);border:1px solid rgba(247,183,50,.2);border-radius:var(--r2);font-size:12px;color:var(--text2)">
+        הסילבוס הקיים יעודכן: תאריכים יחושבו מחדש עם ימי החופש החדשים.
+      </div>`:'<div style="margin-top:10px;font-size:12px;color:var(--warn)">⚠️ אין סילבוס קיים — העלה קודם קובץ סילבוס Excel.</div>'}
+    </div>`;
+
+  if(hasExisting && res.courseStart) confirmBtn.style.display='';
+}
+
+async function confirmGanttSync(){
+  if(!_ganttResult||!_syllabusCache?.rows?.length){ showToast('אין סילבוס קיים לסנכרן','warn'); return; }
+  const {courseStart, vacDates} = _ganttResult;
+
+  // Merge with existing vacation days (union)
+  const existingVac = _syllabusCache.vacationDays||[];
+  const mergedVac = [...new Set([...existingVac, ...vacDates])].sort();
+
+  const newRows = recalculateSyllabusDates(_syllabusCache.rows, courseStart, mergedVac);
+  const newSyllabus = {..._syllabusCache, rows:newRows, courseStart, vacationDays:mergedVac};
+  await saveSyllabus(newSyllabus);
+  document.getElementById('gantt-modal').remove();
+  showToast(`✓ הסילבוס סונכרן עם הגאנט — ${mergedVac.length} ימי חופש`, 'success');
+  _ganttResult=null;
   renderSyllabus();
 }
 
