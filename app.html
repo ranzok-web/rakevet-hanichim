@@ -2129,8 +2129,11 @@ function renderSyllabus(){
     ${vacDays.length?`<div style="margin-top:10px;font-size:12px;color:var(--text3)">🏖️ ${vacDays.join(' | ')}</div>`:''}
   </div>
   <div class="card" style="padding:0;overflow:hidden">
-    <div style="padding:14px 16px 8px;font-size:15px;font-weight:700;color:var(--text)">מסלול הלימודים</div>
-    <div id="syllabus-timeline" style="height:calc(100vh - 400px);min-height:280px;overflow-y:auto;padding:0 10px 10px;touch-action:pan-y;-webkit-overflow-scrolling:touch">`;
+    <div style="padding:14px 16px 8px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:15px;font-weight:700;color:var(--text)">מסלול הלימודים</div>
+      ${canEdit?`<button class="btn btn-outline btn-sm" onclick="openAddDayModal(-1)">➕ הוסף יום</button>`:''}
+    </div>
+    <div id="syllabus-timeline" style="height:calc(100vh - 420px);min-height:280px;overflow-y:auto;padding:0 10px 10px;touch-action:pan-y;-webkit-overflow-scrolling:touch">`;
 
   rows.forEach((r,i)=>{
     const d=parseDate(r.date);
@@ -2139,7 +2142,7 @@ function renderSyllabus(){
     const color=isActive?'var(--accent)':isPast?'var(--success)':'var(--text3)';
     const bg=isActive?'rgba(247,183,50,.09)':isPast?'rgba(46,204,113,.04)':'transparent';
     const border=isActive?'2px solid rgba(247,183,50,.5)':'1px solid var(--border)';
-    html+=`<div id="${isActive?'syllabus-today':''}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:${bg};border:${border};border-radius:var(--r2);margin-bottom:4px">
+    html+=`<div id="${isActive?'syllabus-today':''}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:${bg};border:${border};border-radius:var(--r2);margin-bottom:2px">
       <div style="flex-shrink:0;text-align:center;width:38px">
         <div style="font-size:15px;font-weight:900;color:${color}">${i+1}</div>
         <div style="font-size:9px;color:var(--text3)">${d?dayLabel(d):''}</div>
@@ -2148,7 +2151,14 @@ function renderSyllabus(){
         <div style="font-size:11px;color:var(--text3)">${r.date||''} ${isActive?`<span style="color:var(--accent);font-weight:700">${isOffDay?'← יום אחרון':'← היום'}</span>`:''}</div>
         <div style="font-size:13px;font-weight:700;color:${isActive?'var(--accent)':isPast?'var(--text)':'var(--text2)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.topic||''}</div>
       </div>
-      <div style="flex-shrink:0;font-size:14px">${isPast?'✅':isActive?'📌':'⏳'}</div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <div style="font-size:14px">${isPast?'✅':isActive?'📌':'⏳'}</div>
+        ${canEdit?`<button onclick="event.stopPropagation();openAddDayModal(${i})" title="הוסף יום אחרי יום ${i+1}"
+          style="width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:transparent;
+          color:var(--text3);font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;
+          transition:.2s" onmouseover="this.style.background='rgba(0,59,142,.15)';this.style.color='var(--primary-light)'"
+          onmouseout="this.style.background='transparent';this.style.color='var(--text3)'">+</button>`:''}
+      </div>
     </div>`;
   });
 
@@ -2606,6 +2616,92 @@ async function confirmGanttSync(){
   showToast(`✓ הסילבוס סונכרן עם הגאנט — ${mergedVac.length} ימי חופש`, 'success');
   _ganttResult=null;
   renderSyllabus();
+}
+
+// ============================================================
+// ADD / EDIT SYLLABUS DAY
+// ============================================================
+
+function openAddDayModal(afterIdx){
+  // afterIdx = -1 means add at end, otherwise insert AFTER rows[afterIdx]
+  const rows = _syllabusCache?.rows||[];
+  const insertPos = afterIdx === -1 ? rows.length : afterIdx + 1;
+
+  // Suggest next date
+  let suggestedDate = '';
+  if(afterIdx >= 0 && afterIdx < rows.length){
+    const prevDate = parseDate(rows[afterIdx].date);
+    if(prevDate){
+      let next = new Date(prevDate.getTime()+86400000);
+      const vacSet = new Set(_syllabusCache?.vacationDays||[]);
+      while(next.getDay()===5||next.getDay()===6||vacSet.has(formatDate(next)))
+        next = new Date(next.getTime()+86400000);
+      suggestedDate = formatDate(next);
+    }
+  }
+
+  const afterLabel = afterIdx===-1
+    ? `בסוף הסילבוס (לאחר יום ${rows.length})`
+    : `לאחר יום ${afterIdx+1} (${rows[afterIdx]?.date||''} — ${rows[afterIdx]?.topic||''})`;
+
+  const html=`<div class="modal-overlay" id="addday-modal" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:480px;width:100%">
+      <h3>➕ הוספת יום לסילבוס</h3>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px;padding:10px 12px;
+           background:var(--bg-input);border-radius:var(--r2);border:1px solid var(--border)">
+        מיקום: <strong style="color:var(--text)">${afterLabel}</strong>
+      </div>
+      <div class="form-group">
+        <label>תאריך (DD/MM/YYYY)</label>
+        <input type="text" id="addday-date" class="edit-input" value="${suggestedDate}" placeholder="DD/MM/YYYY" style="max-width:180px">
+      </div>
+      <div class="form-group">
+        <label>נושא *</label>
+        <input type="text" id="addday-topic" class="edit-input" placeholder="לדוגמה: יום פתוח / תקלות / מודול D">
+      </div>
+      <div class="form-group">
+        <label>פרטים (אופציונלי)</label>
+        <input type="text" id="addday-details" class="edit-input" placeholder="פרטים נוספים">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="document.getElementById('addday-modal').remove()">ביטול</button>
+        <button class="btn btn-primary" onclick="confirmAddDay(${insertPos})">➕ הוסף יום</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(()=>document.getElementById('addday-topic').focus(), 100);
+}
+
+async function confirmAddDay(insertPos){
+  const dateVal = document.getElementById('addday-date').value.trim();
+  const topic   = document.getElementById('addday-topic').value.trim();
+  const details = document.getElementById('addday-details').value.trim();
+
+  if(!topic){ showToast('נא למלא נושא','error'); return; }
+  if(dateVal && !dateVal.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)){
+    showToast('פורמט תאריך שגוי — DD/MM/YYYY','error'); return;
+  }
+
+  const newRow = { date: dateVal, topic, details };
+  const rows = [...(_syllabusCache?.rows||[])];
+  rows.splice(insertPos, 0, newRow);
+
+  const newSyllabus = {..._syllabusCache, rows};
+  await saveSyllabus(newSyllabus);
+  document.getElementById('addday-modal').remove();
+  showToast(`✓ יום "${topic}" נוסף בסילבוס (יום ${insertPos+1})`, 'success');
+  renderSyllabus();
+
+  // Scroll to the inserted day
+  setTimeout(()=>{
+    const container = document.getElementById('syllabus-timeline');
+    if(container){
+      const items = container.querySelectorAll('[id]');
+      const allItems = container.children;
+      if(allItems[insertPos]) allItems[insertPos].scrollIntoView({behavior:'smooth',block:'center'});
+    }
+  }, 200);
 }
 
 // ============================================================
