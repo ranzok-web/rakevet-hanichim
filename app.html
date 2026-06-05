@@ -2096,46 +2096,30 @@ function renderSyllabus(){
 
   let html=`
   <style>
-    .sw-wheel{position:relative;width:100px;height:${ITEM_H*5}px;overflow:hidden;flex-shrink:0}
-    .sw-wheel::before,.sw-wheel::after{content:'';position:absolute;left:0;right:0;height:${ITEM_H*2}px;z-index:2;pointer-events:none}
-    .sw-wheel::before{top:0;background:linear-gradient(to bottom,var(--bg-card) 30%,transparent)}
-    .sw-wheel::after{bottom:0;background:linear-gradient(to top,var(--bg-card) 30%,transparent)}
-    .sw-center{position:absolute;top:50%;left:0;right:0;height:${ITEM_H}px;transform:translateY(-50%);
-      background:rgba(0,59,142,.12);border-radius:10px;border:1.5px solid rgba(0,59,142,.25);z-index:1}
-    .sw-track{position:absolute;width:100%;transition:transform 1.4s cubic-bezier(0.23,1,0.32,1)}
-    .sw-item{height:${ITEM_H}px;display:flex;align-items:center;justify-content:center;
-      font-size:22px;font-weight:900;color:var(--text2);position:relative;z-index:3}
-    .sw-item.active{color:var(--primary-light);font-size:28px}
-    .sw-item.empty{opacity:0}
-    @keyframes swStar{0%{transform:scale(0) rotate(0deg);opacity:0}50%{opacity:1}100%{transform:scale(1.5) rotate(180deg);opacity:0}}
-    .sw-star{position:absolute;pointer-events:none;animation:swStar .8s ease-out forwards}
+    @keyframes countUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+    .day-counter{animation:countUp .6s ease-out forwards}
+    #syllabus-timeline::-webkit-scrollbar{display:none}
+    #syllabus-timeline{-ms-overflow-style:none;scrollbar-width:none}
   </style>
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-      <div class="sw-wheel" id="sw-wheel">
-        <div class="sw-center"></div>
-        <div class="sw-track" id="sw-track" style="transform:translateY(0)">
-          ${wheelRange.map((ri,wi)=>{
-            const valid=ri>=0&&ri<total;
-            const isActive=ri===activeIdx;
-            return `<div class="sw-item${isActive?' active':''}${!valid?' empty':''}">${valid?ri+1:''}</div>`;
-          }).join('')}
-        </div>
+      <div style="background:rgba(0,59,142,.12);border:1.5px solid rgba(0,59,142,.25);border-radius:14px;
+           padding:14px 22px;text-align:center;flex-shrink:0;min-width:90px">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px">יום</div>
+        <div class="day-counter" style="font-size:48px;font-weight:900;color:var(--primary-light);line-height:1" id="sw-num">1</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">מתוך ${total}</div>
       </div>
-      <div style="flex:1;min-width:160px">
-        <div style="font-size:13px;color:var(--text2);margin-bottom:4px">
-          ${isOffDay?'<span style="color:var(--warn)">🏖️ יום חופש — </span>':''}יום לימוד נוכחי
+      <div style="flex:1;min-width:140px">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:6px">
+          ${isOffDay?'<span style="color:var(--warn)">🏖️ יום חופש — יום אחרון שנלמד</span>':'📌 יום לימוד נוכחי'}
         </div>
-        <div style="font-size:24px;font-weight:900;color:var(--primary-light);margin-bottom:8px">
-          יום ${activeIdx>=0?activeIdx+1:'—'} מתוך ${total}
-        </div>
-        ${activeRow?`<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px">${activeRow.topic}</div>
-        ${activeRow.details?`<div style="font-size:12px;color:var(--text2)">${activeRow.date}</div>`:''}`:
+        ${activeRow?`<div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:3px">${activeRow.topic}</div>
+        <div style="font-size:12px;color:var(--text3)">${activeRow.date}</div>`:
         '<div style="font-size:13px;color:var(--text3)">הקורס טרם התחיל</div>'}
       </div>
       <div style="text-align:center;flex-shrink:0">
-        ${canEdit?`<button class="btn btn-outline btn-sm" onclick="openVacationModal()" style="margin-bottom:8px;display:block;width:100%">🏖️ ימי חופש</button>`:''}
-        <div style="font-size:32px;font-weight:900;color:var(--primary-light)">${pct}%</div>
+        ${canEdit?`<button class="btn btn-outline btn-sm" onclick="openVacationModal()" style="margin-bottom:10px;display:block;width:100%">🏖️ ימי חופש</button>`:''}
+        <div style="font-size:28px;font-weight:900;color:var(--primary-light)">${pct}%</div>
         <div style="font-size:11px;color:var(--text3)">הושלם</div>
       </div>
     </div>
@@ -2146,7 +2130,7 @@ function renderSyllabus(){
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <div style="padding:14px 16px 8px;font-size:15px;font-weight:700;color:var(--text)">מסלול הלימודים</div>
-    <div id="syllabus-timeline" style="height:calc(100vh - 420px);min-height:280px;overflow-y:auto;padding:0 10px 10px;-webkit-overflow-scrolling:touch">`;
+    <div id="syllabus-timeline" style="height:calc(100vh - 400px);min-height:280px;overflow-y:auto;padding:0 10px 10px;touch-action:pan-y;-webkit-overflow-scrolling:touch">`;
 
   rows.forEach((r,i)=>{
     const d=parseDate(r.date);
@@ -2171,25 +2155,23 @@ function renderSyllabus(){
   html+=`</div></div>`;
   el.innerHTML=html;
 
-  // Animate wheel: start from day 1, scroll to activeIdx
-  setTimeout(()=>{
-    const track=document.getElementById('sw-track');
-    if(track&&activeIdx>=0){
-      // Items shown: activeIdx-2 to activeIdx+2
-      // Center item is index 2 in the track (0-based)
-      // Initially show day 1 area → translate to show activeIdx in center
-      // The track already renders the correct 5 items centered on activeIdx
-      // Animate from "too high" to correct position
-      track.style.transition='none';
-      track.style.transform=`translateY(-${ITEM_H*4}px)`;
-      requestAnimationFrame(()=>{
-        requestAnimationFrame(()=>{
-          track.style.transition='transform 1.4s cubic-bezier(0.23,1,0.32,1)';
-          track.style.transform='translateY(0)';
-        });
-      });
+  // Animate day counter: count from 1 to activeIdx+1
+  if(activeIdx>=0){
+    const target=activeIdx+1;
+    const el=document.getElementById('sw-num');
+    if(el){
+      const dur=Math.min(1200, target*40);
+      const start=performance.now();
+      const tick=now=>{
+        const p=Math.min(1,(now-start)/dur);
+        const ease=1-Math.pow(1-p,3);
+        el.textContent=Math.round(1+(target-1)*ease);
+        if(p<1) requestAnimationFrame(tick);
+        else el.textContent=target;
+      };
+      requestAnimationFrame(tick);
     }
-  },50);
+  }
 
   // Scroll timeline to active day
   setTimeout(()=>{
