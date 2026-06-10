@@ -1072,7 +1072,7 @@ function renderDashboard(){
           <button class="btn btn-outline btn-sm" onclick="navigate('trainees')">הצג הכל</button>
         </div>
         <div class="table-wrap"><table>
-          <thead><tr><th>שם חניך</th><th>מוטיבציה</th><th>מקצועיות</th><th>משמעת</th><th>ציון משוכלל</th><th>סטטוס</th></tr></thead>
+          <thead><tr><th>שם חניך</th><th>מ. עובד</th><th>מוטיבציה</th><th>מקצועיות</th><th>משמעת</th><th>ציון משוכלל</th><th>סטטוס</th></tr></thead>
           <tbody>
             ${data.map(t=>{
               const w=calcWeightedScore(t,1);
@@ -1081,6 +1081,7 @@ function renderDashboard(){
               const d=calcCatAvg(t.scores.discipline,1);
               return `<tr onclick="navigate('trainee',${t.id})">
                 <td class="td-name">${t.name}</td>
+                <td style="color:var(--text2);font-size:12px">${t.employeeId||'—'}</td>
                 <td class="td-score ${scoreClass(m)}">${fmt(m)}</td>
                 <td class="td-score ${scoreClass(p)}">${fmt(p)}</td>
                 <td class="td-score ${scoreClass(d)}">${fmt(d)}</td>
