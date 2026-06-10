@@ -1957,7 +1957,51 @@ function makeReplacement(tag, value){
   return tag+`><is><t xml:space="preserve">${text}</t></is></c>`;
 }
 
+function _colToNum(col){
+  let n=0; for(const c of col.toUpperCase()) n=n*26+(c.charCodeAt(0)-64); return n;
+}
+
+function ensureCells(xml, refs){
+  // Group by row number
+  const byRow={};
+  for(const ref of refs){
+    const m=ref.match(/^([A-Z]+)(\d+)$/i);
+    if(!m) continue;
+    const row=m[2], col=m[1].toUpperCase();
+    if(!byRow[row]) byRow[row]=[];
+    byRow[row].push({ref:ref.toUpperCase(),col});
+  }
+  for(const [rowNum,cells] of Object.entries(byRow)){
+    const rowPat=new RegExp(`(<row\\b[^>]*\\br="${rowNum}"[^>]*>)([\\s\\S]*?)(</row>)`);
+    const rowMatch=xml.match(rowPat);
+    if(rowMatch){
+      let [,open,inner,close]=rowMatch;
+      for(const {ref,col} of cells){
+        if(inner.includes(`r="${ref}"`)) continue;
+        // insert at correct column position
+        const colNum=_colToNum(col);
+        const cellRe=/<c\b[^>]*\br="([A-Z]+)\d+"[^>]*(?:\/>|>[\s\S]*?<\/c>)/g;
+        let ins=null,m2;
+        while((m2=cellRe.exec(inner))!==null){
+          if(_colToNum(m2[1])>colNum){ins=m2.index;break;}
+        }
+        const empty=`<c r="${ref}"/>`;
+        inner=ins!==null ? inner.slice(0,ins)+empty+inner.slice(ins) : inner+empty;
+      }
+      xml=xml.replace(rowPat,open+inner+close);
+    } else {
+      // row missing — insert before </sheetData>
+      const sorted=[...cells].sort((a,b)=>_colToNum(a.col)-_colToNum(b.col));
+      const rowXml=`<row r="${rowNum}">`+sorted.map(c=>`<c r="${c.ref}"/>`).join('')+`</row>`;
+      xml=xml.replace('</sheetData>',rowXml+'</sheetData>');
+    }
+  }
+  return xml;
+}
+
 function updateCells(content, updates){
+  // Ensure all target cells exist first
+  content=ensureCells(content,Object.keys(updates).map(r=>r.toUpperCase()));
   for(const [ref, value] of Object.entries(updates)){
     const r=ref.toUpperCase();
     const pat=new RegExp(`(<c\\b[^>]*?\\br="${r}"[^>]*?)(/\\s*>|>[\\s\\S]*?</c>)`,'g');
