@@ -2157,10 +2157,10 @@ function _showBulkScoreModal(excelData){
   const modal = document.createElement('div');
   modal.className='modal-overlay';
   modal.id='import-scores-modal';
-  modal.innerHTML=`<div class="modal-box" style="max-width:95vw;width:900px">
-    <div class="modal-header">
-      <span style="font-size:18px;font-weight:700">📊 עדכון ציונים מעוניים</span>
-      <button class="modal-close" onclick="document.getElementById('import-scores-modal').remove()">✕</button>
+  modal.innerHTML=`<div class="modal" style="max-width:95vw;width:900px;padding:0;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border)">
+      <span style="font-size:18px;font-weight:700;color:var(--text)">📊 עדכון ציונים עיוניים</span>
+      <button onclick="document.getElementById('import-scores-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);line-height:1">✕</button>
     </div>
     <div style="padding:16px 20px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
