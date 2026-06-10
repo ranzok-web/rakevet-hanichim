@@ -2017,20 +2017,49 @@ async function generateExcelInBrowser(trainees){
 }
 
 // ============================================================
-// IMPORT SCORES FROM EXCEL
+// IMPORT / BULK EDIT SCORES
 // ============================================================
 
-// Column name → {object, key} mapping
+// All theory test columns (Excel col name → app key)
 const SCORE_COL_MAP = [
-  { col:'מבחן יורו 4000', obj:'theory', key:'euro4000' },
-  { col:'מבחן JT',        obj:'theory', key:'jt42'     },
-  { col:'מבחן GM-מועד א', obj:'theory', key:'gm0'      },
-  { col:'מבחן GM-מועד ב', obj:'theory', key:'gm1'      },
-  { col:'מבחן סימנורים',  obj:'theory', key:'signals'  },
+  { col:'מבחן יורו 4000', key:'euro4000', label:'יורו 4000' },
+  { col:'מבחן JT',        key:'jt42',     label:'JT'        },
+  { col:'מבחן GM-מועד א', key:'gm0',      label:'GM א'      },
+  { col:'מבחן GM-מועד ב', key:'gm1',      label:'GM ב'      },
+  { col:'מבחן סימנורים',  key:'signals',  label:'סימנורים'  },
+  { col:null,             key:'routine',  label:'שגרה ועיתוק'},
+  { col:null,             key:'emergency',label:'חירום'      },
+  { col:null,             key:'choms',    label:'חומ"ס'      },
 ];
 
+function _normName(s){ return String(s||'').replace(/\s+/g,'').toLowerCase(); }
+
+function _matchTraineeFromExcel(trainees, empId, excelName){
+  // 1. exact employeeId match
+  let t = trainees.find(t => String(t.employeeId||'').trim() === empId);
+  if(t) return t;
+  // 2. INITIAL_TRAINEES employeeId match → use that id to find trainee
+  const base = INITIAL_TRAINEES.find(b => String(b.employeeId||'').trim() === empId);
+  if(base) t = trainees.find(t => t.id === base.id);
+  if(t) return t;
+  // 3. name contains match (normalized)
+  const normExcel = _normName(excelName);
+  return trainees.find(t => {
+    const normApp = _normName(t.name);
+    return normExcel && normApp && (normExcel.includes(normApp) || normApp.includes(normExcel));
+  }) || null;
+}
+
+function _getTheoryVal(t, key){
+  const s = t.theoryScores || {};
+  if(key==='gm0') return Array.isArray(s.gm) ? s.gm[0] : s.gm;
+  if(key==='gm1') return Array.isArray(s.gm) ? s.gm[1] : null;
+  return s[key];
+}
+
 function openImportScoresModal(){
-  document.getElementById('import-scores-file').click();
+  // Open without Excel — show editable table for all trainees + all tests
+  _showBulkScoreModal({});
 }
 
 function parseImportScoresFile(ev){
@@ -2043,33 +2072,35 @@ function parseImportScoresFile(ev){
       const wb = XLSX.read(e.target.result, {type:'array'});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
-      if(!rows.length){ showToast('הקובץ ריק או לא נתמך','error'); return; }
-
-      // Detect which score columns exist
-      const headers = Object.keys(rows[0]);
-      const activeCols = SCORE_COL_MAP.filter(m => headers.some(h=>h.trim()===m.col));
-      if(!activeCols.length){ showToast('לא נמצאו עמודות ציונים מוכרות','error'); return; }
+      if(!rows.length){ showToast('הקובץ ריק','error'); return; }
 
       const trainees = getData();
-      const preview = [];
-
+      // empId → { key: value }
+      const excelData = {};
+      let matched = 0;
       rows.forEach(row => {
         const empId = String(row['Emp ID']||'').trim();
-        if(!empId) return;
-        const trainee = trainees.find(t => String(t.employeeId||'').trim() === empId);
-        if(!trainee) return;
-
-        const scores = {};
-        activeCols.forEach(m => {
-          const raw = row[m.col];
-          const val = raw !== '' && raw !== null && raw !== undefined ? parseInt(raw) : null;
-          scores[m.key] = val;
+        const excelName = String(row['Emp Name']||'').trim();
+        const t = _matchTraineeFromExcel(trainees, empId, excelName);
+        if(!t) return;
+        matched++;
+        excelData[t.id] = {};
+        SCORE_COL_MAP.forEach(m => {
+          if(!m.col) return;
+          // try exact then case-insensitive partial match on header
+          const headers = Object.keys(row);
+          const hdr = headers.find(h => h.trim() === m.col) ||
+                      headers.find(h => h.trim().includes(m.col) || m.col.includes(h.trim()));
+          if(!hdr) return;
+          const raw = row[hdr];
+          if(raw !== '' && raw !== null && raw !== undefined)
+            excelData[t.id][m.key] = parseInt(raw);
         });
-        preview.push({ trainee, empId, excelName: String(row['Emp Name']||'').trim(), scores, activeCols });
       });
 
-      if(!preview.length){ showToast('לא נמצאו חניכים תואמים לפי מספר עובד','warn'); return; }
-      showImportScoresModal(preview, activeCols);
+      if(!matched){ showToast('לא נמצאו חניכים תואמים — בדוק מספרי עובד','warn'); return; }
+      showToast(`נמצאו ${matched} חניכים מהקובץ — ניתן לערוך לפני שמירה`, 'success');
+      _showBulkScoreModal(excelData);
     } catch(err){
       showToast('שגיאה בקריאת הקובץ: '+err.message,'error');
     }
@@ -2077,66 +2108,141 @@ function parseImportScoresFile(ev){
   reader.readAsArrayBuffer(file);
 }
 
-function showImportScoresModal(preview, activeCols){
-  const colHeaders = activeCols.map(m=>`<th>${m.col}</th>`).join('');
-  const rows = preview.map(p => {
-    const cells = activeCols.map(m => {
-      const newVal = p.scores[m.key];
-      let cur;
-      if(m.key==='gm0') cur = Array.isArray(p.trainee.theoryScores.gm) ? p.trainee.theoryScores.gm[0] : p.trainee.theoryScores.gm;
-      else if(m.key==='gm1') cur = Array.isArray(p.trainee.theoryScores.gm) ? p.trainee.theoryScores.gm[1] : null;
-      else cur = p.trainee.theoryScores[m.key];
-      const changed = newVal !== null && newVal !== cur;
-      return `<td style="${changed?'font-weight:700;color:var(--primary-light)':''}">${newVal !== null ? newVal : '—'}</td>`;
+function _showBulkScoreModal(excelData){
+  const trainees = getData();
+  const cols = SCORE_COL_MAP;
+
+  const thCols = cols.map(m=>`<th style="min-width:72px;font-size:11px">${m.label}</th>`).join('');
+
+  const bodyRows = trainees.map(t => {
+    const ex = excelData[t.id] || {};
+    const cells = cols.map(m => {
+      const fromExcel = ex[m.key] !== undefined ? ex[m.key] : '';
+      const fromApp   = _getTheoryVal(t, m.key);
+      // pre-fill: excel value if present, else current app value
+      const val = fromExcel !== '' ? fromExcel : (fromApp != null ? fromApp : '');
+      const highlight = fromExcel !== '' ? 'background:rgba(99,179,237,.12)' : '';
+      return `<td style="padding:4px 2px;${highlight}">
+        <input type="number" min="0" max="100"
+          style="width:62px;padding:4px 6px;font-size:12px;text-align:center;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text)"
+          data-tid="${t.id}" data-key="${m.key}" value="${val}" placeholder="—">
+      </td>`;
     }).join('');
-    return `<tr><td>${p.trainee.name}</td><td style="color:var(--text2)">${p.empId}</td>${cells}</tr>`;
+    return `<tr>
+      <td style="font-weight:600;white-space:nowrap">${t.name}</td>
+      <td style="color:var(--text2);font-size:11px">${t.employeeId||'—'}</td>
+      ${cells}
+    </tr>`;
   }).join('');
 
   const modal = document.createElement('div');
   modal.className='modal-overlay';
   modal.id='import-scores-modal';
-  modal.innerHTML=`<div class="modal-box" style="max-width:700px;width:95%">
+  modal.innerHTML=`<div class="modal-box" style="max-width:95vw;width:900px">
     <div class="modal-header">
-      <span style="font-size:18px;font-weight:700">📊 ייבוא ציונים מאקסל</span>
+      <span style="font-size:18px;font-weight:700">📊 עדכון ציונים מעוניים</span>
       <button class="modal-close" onclick="document.getElementById('import-scores-modal').remove()">✕</button>
     </div>
-    <div style="padding:20px">
-      <p style="font-size:13px;color:var(--text2);margin-bottom:16px">נמצאו <strong>${preview.length}</strong> חניכים תואמים. ציונים מודגשים בכחול יעדכנו ערך קיים.</p>
-      <div class="table-wrap" style="max-height:360px;overflow-y:auto">
-        <table class="score-table">
-          <thead><tr><th>שם חניך</th><th>מ. עובד</th>${colHeaders}</tr></thead>
-          <tbody>${rows}</tbody>
+    <div style="padding:16px 20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <span style="font-size:13px;color:var(--text2)">ניתן לערוך ציונים ידנית או לטעון מקובץ אקסל.</span>
+        <label class="btn btn-outline btn-sm" style="cursor:pointer">
+          📂 טען מאקסל
+          <input type="file" accept=".xlsx,.xls" style="display:none" onchange="parseImportScoresFileInModal(event)">
+        </label>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+        <span style="display:inline-block;width:12px;height:12px;background:rgba(99,179,237,.25);border-radius:3px;margin-left:4px"></span>תאים מסומנים בכחול — מולאו מהאקסל. שדות ריקים לא ישונו.
+      </div>
+      <div class="table-wrap" style="max-height:55vh;overflow:auto">
+        <table class="score-table" style="min-width:700px" id="bulk-scores-table">
+          <thead><tr>
+            <th>שם חניך</th><th>מ. עובד</th>
+            ${thCols}
+          </tr></thead>
+          <tbody>${bodyRows}</tbody>
         </table>
       </div>
-      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
         <button class="btn btn-outline" onclick="document.getElementById('import-scores-modal').remove()">ביטול</button>
-        <button class="btn btn-primary" onclick="confirmImportScores()">✓ עדכן ציונים</button>
+        <button class="btn btn-primary" onclick="confirmBulkScores()">💾 שמור ציונים</button>
       </div>
     </div>
   </div>`;
   modal.onclick = ev => { if(ev.target===modal) modal.remove(); };
+  // remove existing if open
+  document.getElementById('import-scores-modal')?.remove();
   document.body.appendChild(modal);
-  window._importScoresPreview = preview;
 }
 
-function confirmImportScores(){
-  const preview = window._importScoresPreview;
-  if(!preview) return;
-  preview.forEach(p => {
-    const updates = { ...p.trainee };
-    if(!Array.isArray(updates.theoryScores.gm)) updates.theoryScores.gm = [updates.theoryScores.gm];
-    p.activeCols.forEach(m => {
-      const val = p.scores[m.key];
-      if(val === null) return;
-      if(m.key==='gm0') updates.theoryScores.gm[0] = val;
-      else if(m.key==='gm1') updates.theoryScores.gm[1] = val;
-      else updates.theoryScores[m.key] = val;
+function parseImportScoresFileInModal(ev){
+  // Same as parseImportScoresFile but replaces values inside open modal
+  const file = ev.target.files[0];
+  if(!file) return;
+  ev.target.value='';
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      if(!rows.length){ showToast('הקובץ ריק','error'); return; }
+      const trainees = getData();
+      let matched=0;
+      rows.forEach(row => {
+        const empId = String(row['Emp ID']||'').trim();
+        const excelName = String(row['Emp Name']||'').trim();
+        const t = _matchTraineeFromExcel(trainees, empId, excelName);
+        if(!t) return;
+        matched++;
+        SCORE_COL_MAP.forEach(m => {
+          if(!m.col) return;
+          const headers = Object.keys(row);
+          const hdr = headers.find(h=>h.trim()===m.col) || headers.find(h=>h.trim().includes(m.col)||m.col.includes(h.trim()));
+          if(!hdr) return;
+          const raw = row[hdr];
+          if(raw===''||raw===null||raw===undefined) return;
+          const inp = document.querySelector(`input[data-tid="${t.id}"][data-key="${m.key}"]`);
+          if(inp){ inp.value=parseInt(raw); inp.closest('td').style.background='rgba(99,179,237,.12)'; }
+        });
+      });
+      showToast(`עודכנו נתונים מ-${matched} חניכים`, 'success');
+    } catch(err){ showToast('שגיאה: '+err.message,'error'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function confirmBulkScores(){
+  const inputs = document.querySelectorAll('#bulk-scores-table input[data-tid]');
+  const updates = {};
+  inputs.forEach(inp => {
+    const tid = parseInt(inp.dataset.tid);
+    const key = inp.dataset.key;
+    const val = inp.value.trim();
+    if(val==='') return;
+    const num = parseInt(val);
+    if(isNaN(num)) return;
+    if(!updates[tid]) updates[tid] = {};
+    updates[tid][key] = num;
+  });
+  const count = Object.keys(updates).length;
+  if(!count){ showToast('לא בוצעו שינויים','warn'); return; }
+  const trainees = getData();
+  Object.entries(updates).forEach(([tidStr, vals]) => {
+    const tid = parseInt(tidStr);
+    const t = trainees.find(x=>x.id===tid);
+    if(!t) return;
+    const upd = {...t, theoryScores:{...t.theoryScores}};
+    if(!Array.isArray(upd.theoryScores.gm)) upd.theoryScores.gm=[upd.theoryScores.gm];
+    Object.entries(vals).forEach(([key,num]) => {
+      if(key==='gm0') upd.theoryScores.gm[0]=num;
+      else if(key==='gm1') upd.theoryScores.gm[1]=num;
+      else upd.theoryScores[key]=num;
     });
-    updateTrainee(p.trainee.id, updates);
+    updateTrainee(tid, upd);
   });
   document.getElementById('import-scores-modal').remove();
-  window._importScoresPreview = null;
-  showToast(`✓ ציוני ${preview.length} חניכים עודכנו בהצלחה`, 'success');
+  showToast(`✓ ציונים עודכנו ל-${count} חניכים`, 'success');
 }
 
 async function exportToExcel(){
