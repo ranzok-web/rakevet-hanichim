@@ -481,7 +481,7 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
     <table>
       <thead>
         <tr>
-          <th>#</th><th>שם חניך</th><th>גיל</th><th>מתחם</th>
+          <th>#</th><th>שם חניך</th><th>מ. עובד</th><th>גיל</th><th>מתחם</th>
           <th>ציון מוטיבציה</th><th>ציון מקצועיות</th><th>ציון משוכלל</th>
           <th>סטטוס</th><th>פעולות</th>
         </tr>
@@ -1183,7 +1183,7 @@ function filterTrainees(){
 function renderTraineesRows(data){
   const tb=document.getElementById('trainees-tbody');
   if(!data.length){
-    tb.innerHTML='<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text2)">לא נמצאו חניכים</td></tr>';
+    tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text2)">לא נמצאו חניכים</td></tr>';
     return;
   }
   tb.innerHTML=data.map((t,i)=>{
@@ -1193,6 +1193,7 @@ function renderTraineesRows(data){
     return `<tr onclick="navigate('trainee',${t.id})">
       <td style="color:var(--text2);font-weight:700">${i+1}</td>
       <td class="td-name">${t.name}</td>
+      <td style="color:var(--text2);font-size:12px">${t.employeeId||'—'}</td>
       <td>${t.age||'—'}</td>
       <td>${t.location||'—'}</td>
       <td class="td-score ${scoreClass(m)}">${fmt(m)}</td>
