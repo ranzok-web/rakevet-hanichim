@@ -2062,6 +2062,49 @@ function openImportScoresModal(){
   _showBulkScoreModal({});
 }
 
+// Parse Excel sheet automatically — finds the real header row regardless of title rows at top
+function _parseExcelAuto(ws){
+  const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+  // Find first row that contains 'Emp ID' or a known score column header
+  const knownCols = ['Emp ID','Emp Name',...SCORE_COL_MAP.filter(m=>m.col).map(m=>m.col)];
+  let hdrIdx = raw.findIndex(row =>
+    row.some(cell => knownCols.some(k => String(cell||'').trim() === k))
+  );
+  if(hdrIdx < 0) return [];
+  const headers = raw[hdrIdx].map(h => String(h||'').trim());
+  return raw.slice(hdrIdx+1)
+    .filter(row => row.some(c => c !== ''))
+    .map(row => {
+      const obj = {};
+      headers.forEach((h,i) => { obj[h] = row[i] ?? ''; });
+      return obj;
+    });
+}
+
+function _extractExcelData(rows, trainees){
+  const excelData = {};
+  let matched = 0;
+  rows.forEach(row => {
+    const empId   = String(row['Emp ID']  ||'').trim();
+    const excelName = String(row['Emp Name']||'').trim();
+    if(!empId && !excelName) return;
+    const t = _matchTraineeFromExcel(trainees, empId, excelName);
+    if(!t) return;
+    matched++;
+    excelData[t.id] = excelData[t.id] || {};
+    SCORE_COL_MAP.forEach(m => {
+      if(!m.col) return;
+      const hdr = Object.keys(row).find(h => h === m.col) ||
+                  Object.keys(row).find(h => h.includes(m.col) || m.col.includes(h));
+      if(!hdr) return;
+      const raw = row[hdr];
+      if(raw !== '' && raw !== null && raw !== undefined)
+        excelData[t.id][m.key] = parseInt(raw);
+    });
+  });
+  return { excelData, matched };
+}
+
 function parseImportScoresFile(ev){
   const file = ev.target.files[0];
   if(!file) return;
@@ -2071,33 +2114,9 @@ function parseImportScoresFile(ev){
     try {
       const wb = XLSX.read(e.target.result, {type:'array'});
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
-      if(!rows.length){ showToast('הקובץ ריק','error'); return; }
-
-      const trainees = getData();
-      // empId → { key: value }
-      const excelData = {};
-      let matched = 0;
-      rows.forEach(row => {
-        const empId = String(row['Emp ID']||'').trim();
-        const excelName = String(row['Emp Name']||'').trim();
-        const t = _matchTraineeFromExcel(trainees, empId, excelName);
-        if(!t) return;
-        matched++;
-        excelData[t.id] = {};
-        SCORE_COL_MAP.forEach(m => {
-          if(!m.col) return;
-          // try exact then case-insensitive partial match on header
-          const headers = Object.keys(row);
-          const hdr = headers.find(h => h.trim() === m.col) ||
-                      headers.find(h => h.trim().includes(m.col) || m.col.includes(h.trim()));
-          if(!hdr) return;
-          const raw = row[hdr];
-          if(raw !== '' && raw !== null && raw !== undefined)
-            excelData[t.id][m.key] = parseInt(raw);
-        });
-      });
-
+      const rows = _parseExcelAuto(ws);
+      if(!rows.length){ showToast('לא נמצאו נתונים בקובץ','error'); return; }
+      const { excelData, matched } = _extractExcelData(rows, getData());
       if(!matched){ showToast('לא נמצאו חניכים תואמים — בדוק מספרי עובד','warn'); return; }
       showToast(`נמצאו ${matched} חניכים מהקובץ — ניתן לערוך לפני שמירה`, 'success');
       _showBulkScoreModal(excelData);
@@ -2176,7 +2195,6 @@ function _showBulkScoreModal(excelData){
 }
 
 function parseImportScoresFileInModal(ev){
-  // Same as parseImportScoresFile but replaces values inside open modal
   const file = ev.target.files[0];
   if(!file) return;
   ev.target.value='';
@@ -2185,25 +2203,14 @@ function parseImportScoresFileInModal(ev){
     try {
       const wb = XLSX.read(e.target.result, {type:'array'});
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
-      if(!rows.length){ showToast('הקובץ ריק','error'); return; }
-      const trainees = getData();
-      let matched=0;
-      rows.forEach(row => {
-        const empId = String(row['Emp ID']||'').trim();
-        const excelName = String(row['Emp Name']||'').trim();
-        const t = _matchTraineeFromExcel(trainees, empId, excelName);
-        if(!t) return;
-        matched++;
-        SCORE_COL_MAP.forEach(m => {
-          if(!m.col) return;
-          const headers = Object.keys(row);
-          const hdr = headers.find(h=>h.trim()===m.col) || headers.find(h=>h.trim().includes(m.col)||m.col.includes(h.trim()));
-          if(!hdr) return;
-          const raw = row[hdr];
-          if(raw===''||raw===null||raw===undefined) return;
-          const inp = document.querySelector(`input[data-tid="${t.id}"][data-key="${m.key}"]`);
-          if(inp){ inp.value=parseInt(raw); inp.closest('td').style.background='rgba(99,179,237,.12)'; }
+      const rows = _parseExcelAuto(ws);
+      if(!rows.length){ showToast('לא נמצאו נתונים בקובץ','error'); return; }
+      const { excelData, matched } = _extractExcelData(rows, getData());
+      // Fill inputs in open modal
+      Object.entries(excelData).forEach(([tidStr, vals]) => {
+        Object.entries(vals).forEach(([key, num]) => {
+          const inp = document.querySelector(`input[data-tid="${tidStr}"][data-key="${key}"]`);
+          if(inp){ inp.value=num; inp.closest('td').style.background='rgba(99,179,237,.12)'; }
         });
       });
       showToast(`עודכנו נתונים מ-${matched} חניכים`, 'success');
