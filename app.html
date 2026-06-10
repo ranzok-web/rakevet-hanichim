@@ -472,6 +472,7 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
 <div id="view-trainees" class="view">
   <div class="page-header">
     <div><div class="page-title">כל החניכים</div><div class="page-sub">רשימת חניכי הקורס</div></div>
+    <div id="trainees-page-actions"></div>
   </div>
   <div class="search-bar">
     <input type="text" id="search-inp" placeholder="🔍 חפש חניך לפי שם..." oninput="filterTrainees()">
@@ -1144,6 +1145,11 @@ function renderTraineesTable(){
   const data=getData();
   document.getElementById('search-inp').value='';
   renderTraineesRows(data);
+  const acts=document.getElementById('trainees-page-actions');
+  if(acts && (currentUser.role==='instructor'||currentUser.role==='manager')){
+    acts.innerHTML=`<button class="btn btn-outline btn-sm" onclick="openImportScoresModal()">📊 ייבוא ציונים מאקסל</button>
+    <input type="file" id="import-scores-file" accept=".xlsx,.xls" style="display:none" onchange="parseImportScoresFile(event)">`;
+  }
 }
 
 function filterTrainees(){
@@ -1984,6 +1990,129 @@ async function generateExcelInBrowser(trainees){
   outZip.file('xl/_rels/workbook.xml.rels',newRels);
 
   return outZip.generateAsync({type:'blob',compression:'DEFLATE',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+
+// ============================================================
+// IMPORT SCORES FROM EXCEL
+// ============================================================
+
+// Column name → {object, key} mapping
+const SCORE_COL_MAP = [
+  { col:'מבחן יורו 4000', obj:'theory', key:'euro4000' },
+  { col:'מבחן JT',        obj:'theory', key:'jt42'     },
+  { col:'מבחן GM-מועד א', obj:'theory', key:'gm0'      },
+  { col:'מבחן GM-מועד ב', obj:'theory', key:'gm1'      },
+  { col:'מבחן סימנורים',  obj:'theory', key:'signals'  },
+];
+
+function openImportScoresModal(){
+  document.getElementById('import-scores-file').click();
+}
+
+function parseImportScoresFile(ev){
+  const file = ev.target.files[0];
+  if(!file) return;
+  ev.target.value='';
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      if(!rows.length){ showToast('הקובץ ריק או לא נתמך','error'); return; }
+
+      // Detect which score columns exist
+      const headers = Object.keys(rows[0]);
+      const activeCols = SCORE_COL_MAP.filter(m => headers.some(h=>h.trim()===m.col));
+      if(!activeCols.length){ showToast('לא נמצאו עמודות ציונים מוכרות','error'); return; }
+
+      const trainees = getData();
+      const preview = [];
+
+      rows.forEach(row => {
+        const empId = String(row['Emp ID']||'').trim();
+        if(!empId) return;
+        const trainee = trainees.find(t => String(t.employeeId||'').trim() === empId);
+        if(!trainee) return;
+
+        const scores = {};
+        activeCols.forEach(m => {
+          const raw = row[m.col];
+          const val = raw !== '' && raw !== null && raw !== undefined ? parseInt(raw) : null;
+          scores[m.key] = val;
+        });
+        preview.push({ trainee, empId, excelName: String(row['Emp Name']||'').trim(), scores, activeCols });
+      });
+
+      if(!preview.length){ showToast('לא נמצאו חניכים תואמים לפי מספר עובד','warn'); return; }
+      showImportScoresModal(preview, activeCols);
+    } catch(err){
+      showToast('שגיאה בקריאת הקובץ: '+err.message,'error');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showImportScoresModal(preview, activeCols){
+  const colHeaders = activeCols.map(m=>`<th>${m.col}</th>`).join('');
+  const rows = preview.map(p => {
+    const cells = activeCols.map(m => {
+      const newVal = p.scores[m.key];
+      let cur;
+      if(m.key==='gm0') cur = Array.isArray(p.trainee.theoryScores.gm) ? p.trainee.theoryScores.gm[0] : p.trainee.theoryScores.gm;
+      else if(m.key==='gm1') cur = Array.isArray(p.trainee.theoryScores.gm) ? p.trainee.theoryScores.gm[1] : null;
+      else cur = p.trainee.theoryScores[m.key];
+      const changed = newVal !== null && newVal !== cur;
+      return `<td style="${changed?'font-weight:700;color:var(--primary-light)':''}">${newVal !== null ? newVal : '—'}</td>`;
+    }).join('');
+    return `<tr><td>${p.trainee.name}</td><td style="color:var(--text2)">${p.empId}</td>${cells}</tr>`;
+  }).join('');
+
+  const modal = document.createElement('div');
+  modal.className='modal-overlay';
+  modal.id='import-scores-modal';
+  modal.innerHTML=`<div class="modal-box" style="max-width:700px;width:95%">
+    <div class="modal-header">
+      <span style="font-size:18px;font-weight:700">📊 ייבוא ציונים מאקסל</span>
+      <button class="modal-close" onclick="document.getElementById('import-scores-modal').remove()">✕</button>
+    </div>
+    <div style="padding:20px">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px">נמצאו <strong>${preview.length}</strong> חניכים תואמים. ציונים מודגשים בכחול יעדכנו ערך קיים.</p>
+      <div class="table-wrap" style="max-height:360px;overflow-y:auto">
+        <table class="score-table">
+          <thead><tr><th>שם חניך</th><th>מ. עובד</th>${colHeaders}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="document.getElementById('import-scores-modal').remove()">ביטול</button>
+        <button class="btn btn-primary" onclick="confirmImportScores()">✓ עדכן ציונים</button>
+      </div>
+    </div>
+  </div>`;
+  modal.onclick = ev => { if(ev.target===modal) modal.remove(); };
+  document.body.appendChild(modal);
+  window._importScoresPreview = preview;
+}
+
+function confirmImportScores(){
+  const preview = window._importScoresPreview;
+  if(!preview) return;
+  preview.forEach(p => {
+    const updates = { ...p.trainee };
+    if(!Array.isArray(updates.theoryScores.gm)) updates.theoryScores.gm = [updates.theoryScores.gm];
+    p.activeCols.forEach(m => {
+      const val = p.scores[m.key];
+      if(val === null) return;
+      if(m.key==='gm0') updates.theoryScores.gm[0] = val;
+      else if(m.key==='gm1') updates.theoryScores.gm[1] = val;
+      else updates.theoryScores[m.key] = val;
+    });
+    updateTrainee(p.trainee.id, updates);
+  });
+  document.getElementById('import-scores-modal').remove();
+  window._importScoresPreview = null;
+  showToast(`✓ ציוני ${preview.length} חניכים עודכנו בהצלחה`, 'success');
 }
 
 async function exportToExcel(){
