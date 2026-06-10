@@ -779,7 +779,7 @@ async function loadDataFromSupabase(){
   if(error){ console.error('Load error:',error); return INITIAL_TRAINEES; }
   _syllabusCache = data?.data?.syllabus || null;
   const arr = data?.data?.trainees;
-  if(arr && arr.length > 0) return arr;
+  if(arr && arr.length > 0) return migrateTraineeFields(arr);
   await saveAllToSupabase(INITIAL_TRAINEES, null);
   return INITIAL_TRAINEES;
 }
@@ -809,6 +809,28 @@ function getTrainee(id){ return getData().find(t=>t.id===id); }
 function saveData(arr){
   _dataCache = arr;
   saveDataToSupabase(arr);
+}
+
+function migrateTraineeFields(arr){
+  // Patch fields that exist in INITIAL_TRAINEES but missing from stored data
+  let changed = false;
+  const patched = arr.map(t => {
+    const base = INITIAL_TRAINEES.find(b => b.id === t.id);
+    if(!base) return t;
+    const upd = {...t};
+    if(!upd.employeeId && base.employeeId){ upd.employeeId = base.employeeId; changed = true; }
+    if(upd.name !== base.name && base.employeeId){ upd.name = base.name; changed = true; }
+    return upd;
+  });
+  // Add trainees that exist in INITIAL_TRAINEES but not in stored data
+  INITIAL_TRAINEES.forEach(base => {
+    if(!patched.find(t => t.id === base.id)){
+      patched.push(base);
+      changed = true;
+    }
+  });
+  if(changed) saveData(patched);
+  return patched;
 }
 
 function updateTrainee(id, updates){
