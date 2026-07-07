@@ -460,6 +460,9 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
       <button class="btn btn-outline" id="btn-export-all" onclick="exportToExcel()" style="display:none">
         📥 ייצוא Excel
       </button>
+      <button class="btn btn-outline" id="btn-new-course" onclick="openNewCourseModal()" style="display:none">
+        🔄 קורס חדש
+      </button>
       <button class="btn btn-primary" id="btn-add-trainee" onclick="openAddTrainee()" style="display:none">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         הוסף חניך
@@ -1018,6 +1021,7 @@ async function initApp(){
   const canSeeAll=u.role==='instructor'||u.role==='manager';
   document.getElementById('nav-trainees').style.display=canSeeAll?'':'none';
   document.getElementById('btn-add-trainee').style.display=canSeeAll?'':'none';
+  document.getElementById('btn-new-course').style.display=canSeeAll?'':'none';
   document.getElementById('btn-export-all').style.display=canSeeAll?'':'none';
   document.getElementById('btn-import').style.display=canSeeAll?'':'none';
   document.getElementById('btn-upload-syllabus').style.display=canSeeAll?'':'none';
@@ -1708,6 +1712,126 @@ function saveTrainee(id){
   if(currentUser.role==='instructor'||currentUser.role==='manager') buildTraineeNavLinks();
   renderTraineeDetail(id, false);
   showToast('הנתונים נשמרו בהצלחה','success');
+}
+
+// ============================================================
+// NEW COURSE
+// ============================================================
+
+function openNewCourseModal(){
+  const data = getData();
+  const first = data[0] || {};
+  const html=`<div class="modal-overlay" id="new-course-modal" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-header"><h3>🔄 פתיחת קורס חדש</h3></div>
+      <div style="padding:0 24px 0">
+
+        <div style="background:rgba(220,53,69,.08);border:1px solid rgba(220,53,69,.25);border-radius:var(--r2);padding:12px 16px;margin-bottom:20px;font-size:13px;color:var(--text)">
+          ⚠️ <strong>פעולה זו תאפס את כל ציוני ונתוני החניכים לקורס החדש.</strong><br>
+          בחר אם לשמור את רשימת החניכים הקיימים (עם איפוס ציונים) או להתחיל עם רשימה חדשה.
+        </div>
+
+        <div class="grid2" style="gap:12px;margin-bottom:16px">
+          <div class="form-group"><label>שם הקורס</label>
+            <input class="edit-input" id="nc-course" value="${first.course||'קורס נהג משא ישיר'}">
+          </div>
+          <div class="form-group"><label>מחזור</label>
+            <input class="edit-input" id="nc-cohort" placeholder="לדוגמה: 09/2026">
+          </div>
+          <div class="form-group"><label>תאריך התחלה (DD.MM.YY)</label>
+            <input class="edit-input" id="nc-start" placeholder="01.09.26">
+          </div>
+          <div class="form-group"><label>תאריך סיום מתוכנן (DD.MM.YY)</label>
+            <input class="edit-input" id="nc-end" placeholder="31.12.26">
+          </div>
+        </div>
+
+        <div style="margin-bottom:20px">
+          <label style="font-size:13px;font-weight:600;color:var(--text);display:block;margin-bottom:10px">רשימת חניכים:</label>
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:10px 12px;border:2px solid var(--primary-light);border-radius:var(--r2);margin-bottom:8px;background:rgba(0,59,142,.05)">
+            <input type="radio" name="nc-mode" value="keep" checked style="margin-top:2px;accent-color:var(--primary-light)">
+            <div>
+              <div style="font-weight:600;color:var(--text)">שמור חניכים קיימים ואפס ציונים</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:2px">כל ${data.length} החניכים יישמרו, ציוני תיאוריה, מבחנים מעשיים והערכות יאופסו</div>
+            </div>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:10px 12px;border:2px solid var(--border);border-radius:var(--r2);background:transparent" id="nc-fresh-label">
+            <input type="radio" name="nc-mode" value="fresh" style="margin-top:2px;accent-color:var(--primary-light)" onchange="document.getElementById('nc-fresh-label').style.borderColor='rgba(220,53,69,.5)'">
+            <div>
+              <div style="font-weight:600;color:var(--text)">מחק את כל החניכים ופתח רשימה חדשה</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:2px">רשימת החניכים תתאפס לחלוטין — ניתן להוסיף חניכים חדשים לאחר מכן</div>
+            </div>
+          </label>
+        </div>
+
+        <div style="margin-bottom:20px">
+          <label style="font-size:13px;color:var(--text2)">לאישור הפעולה הקלד <strong style="color:var(--text)">אישור</strong>:</label>
+          <input class="edit-input" id="nc-confirm" placeholder="הקלד אישור" style="margin-top:6px;text-align:center">
+        </div>
+
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="document.getElementById('new-course-modal').remove()">ביטול</button>
+        <button class="btn btn-primary" style="background:#dc3545;border-color:#dc3545" onclick="confirmNewCourse()">🔄 פתח קורס חדש</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  // highlight selected radio
+  document.querySelectorAll('[name="nc-mode"]').forEach(r => r.addEventListener('change', () => {
+    document.getElementById('nc-fresh-label').style.borderColor = r.value==='fresh' ? 'rgba(220,53,69,.5)' : 'var(--border)';
+    document.querySelector('label:has([value="keep"])').style.borderColor = r.value==='keep' ? 'var(--primary-light)' : 'var(--border)';
+  }));
+}
+
+function confirmNewCourse(){
+  const confirm = document.getElementById('nc-confirm').value.trim();
+  if(confirm !== 'אישור'){ showToast('נא הקלד "אישור" כדי לאשר','error'); return; }
+  const course = document.getElementById('nc-course').value.trim() || 'קורס נהג משא ישיר';
+  const cohort = document.getElementById('nc-cohort').value.trim();
+  const plannedEnd = document.getElementById('nc-end').value.trim();
+  const startDate = document.getElementById('nc-start').value.trim();
+  const mode = document.querySelector('[name="nc-mode"]:checked').value;
+
+  if(!cohort){ showToast('נא למלא מחזור','error'); return; }
+
+  const emptyTheory = () => ({signals:null,jt42:null,euro4000:null,gm:[],routine:null,emergency:null,choms:null});
+  const emptyPractical = () => ({jt42cw:['',''],gm:['',''],euro4000:['',''],signalsPractical:['','']});
+  const emptyScores = () => ({
+    motivation: Array(4).fill(null).map(()=>[null,null]),
+    professionalism: Array(6).fill(null).map(()=>[null,null]),
+    discipline: Array(6).fill(null).map(()=>[null,null])
+  });
+
+  let newData;
+  if(mode === 'fresh'){
+    newData = [];
+  } else {
+    newData = getData().map(t => ({
+      ...t,
+      course, cohort, plannedEnd,
+      status: 'בהמתנה',
+      instructorEval: '',
+      gaps: ['','',''],
+      recommendations: ['','',''],
+      behavioralGap: '',
+      rolefit: null,
+      evalDates: [startDate||'', plannedEnd||''],
+      theoryScores: emptyTheory(),
+      practicalTests: emptyPractical(),
+      scores: emptyScores()
+    }));
+  }
+
+  // Reset syllabus too
+  _syllabusCache = null;
+  saveAllToSupabase(newData, null);
+  _dataCache = newData;
+
+  document.getElementById('new-course-modal').remove();
+  buildTraineeNavLinks();
+  navigate('dashboard');
+  showToast(`קורס חדש נפתח בהצלחה${mode==='fresh'?' — ניתן להתחיל להוסיף חניכים':''}`, 'success');
 }
 
 // ============================================================
