@@ -848,13 +848,6 @@ function migrateTraineeFields(arr){
     if(upd.name !== base.name && base.employeeId){ upd.name = base.name; changed = true; }
     return upd;
   });
-  // Add trainees that exist in INITIAL_TRAINEES but not in stored data
-  INITIAL_TRAINEES.forEach(base => {
-    if(!patched.find(t => t.id === base.id)){
-      patched.push(base);
-      changed = true;
-    }
-  });
   if(changed) saveData(patched);
   return patched;
 }
