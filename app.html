@@ -793,15 +793,13 @@ let isDark = true;
 
 async function loadDataFromSupabase(){
   const {data, error} = await _sb.from('trainees').select('data').eq('id',0).single();
-  if(error){ console.error('Load error:',error); return INITIAL_TRAINEES; }
+  if(error){ console.error('Load error:',error); showToast('שגיאה בטעינת נתונים — בדוק חיבור', 'error'); return []; }
   _syllabusCache = data?.data?.syllabus || null;
   _courseMeta    = data?.data?.courseMeta || null;
   const arr = data?.data?.trainees;
-  if(arr && arr.length > 0) return migrateTraineeFields(arr);
-  // Fresh DB — don't auto-load INITIAL_TRAINEES, allow clean start
-  if(arr && arr.length === 0) return [];
-  await saveAllToSupabase(INITIAL_TRAINEES, null, null);
-  return INITIAL_TRAINEES;
+  if(Array.isArray(arr) && arr.length > 0) return migrateTraineeFields(arr);
+  if(Array.isArray(arr)) return []; // empty array = intentionally cleared
+  return []; // null/undefined = no data yet
 }
 
 async function saveAllToSupabase(traineesArr, syllabus, courseMeta){
@@ -1815,7 +1813,7 @@ function openNewCourseModal(){
   }));
 }
 
-function confirmNewCourse(){
+async function confirmNewCourse(){
   if(!document.getElementById('nc-confirm-check').checked){ showToast('נא לסמן את תיבת האישור','error'); return; }
   const course = document.getElementById('nc-course').value.trim() || 'קורס נהג משא ישיר';
   const cohort = document.getElementById('nc-cohort').value.trim();
@@ -1824,14 +1822,6 @@ function confirmNewCourse(){
   const mode = document.querySelector('[name="nc-mode"]:checked').value;
 
   if(!cohort){ showToast('נא למלא מחזור','error'); return; }
-
-  const emptyTheory = () => ({signals:null,jt42:null,euro4000:null,gm:[],routine:null,emergency:null,choms:null});
-  const emptyPractical = () => ({jt42cw:['',''],gm:['',''],euro4000:['',''],signalsPractical:['','']});
-  const emptyScores = () => ({
-    motivation: Array(4).fill(null).map(()=>[null,null]),
-    professionalism: Array(6).fill(null).map(()=>[null,null]),
-    discipline: Array(6).fill(null).map(()=>[null,null])
-  });
 
   let newData;
   if(mode === 'fresh'){
@@ -1847,16 +1837,21 @@ function confirmNewCourse(){
       behavioralGap: '',
       rolefit: null,
       evalDates: [startDate||'', plannedEnd||''],
-      theoryScores: emptyTheory(),
-      practicalTests: emptyPractical(),
-      scores: emptyScores()
+      theoryScores: _emptyTheory(),
+      practicalTests: _emptyPractical(),
+      scores: _emptyScores()
     }));
   }
 
-  // Reset syllabus too
+  const btn = document.querySelector('#new-course-modal button[onclick*="confirmNewCourse"]');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ שומר...'; }
+
+  const meta = {name:course, cohort, startDate, endDate:plannedEnd};
   _syllabusCache = null;
-  saveAllToSupabase(newData, null);
   _dataCache = newData;
+  _courseMeta = meta;
+
+  await saveAllToSupabase(newData, null, meta);
 
   document.getElementById('new-course-modal').remove();
   buildTraineeNavLinks();
