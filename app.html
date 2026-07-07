@@ -3221,18 +3221,17 @@ function parseGanttHorizontal(wb){
   const range = XLSX.utils.decode_range(ref);
 
   const START_COL = 3; // column D (0-indexed)
+  const SUBJECT_COL = 2; // column C — subject names (0-indexed)
 
   // Get start date from D2
   const d2 = ws[XLSX.utils.encode_cell({r:1, c:START_COL})];
   if(!d2?.v) throw new Error('לא נמצא תאריך התחלה בתא D2');
-  // Round to nearest calendar day (Excel serials sometimes have sub-day float artifacts)
   const rawMs = d2.v instanceof Date ? d2.v.getTime() : Math.round((d2.v - 25569)*86400*1000);
   const dayUtc = new Date(Math.round(rawMs / 86400000) * 86400000);
   const startDate = new Date(dayUtc.getUTCFullYear(), dayUtc.getUTCMonth(), dayUtc.getUTCDate());
   if(isNaN(startDate)) throw new Error('לא ניתן לקרוא תאריך התחלה מתא D2');
 
-  // Build mapping: col index → calendar date
-  // WORKDAY.INTL(prev, 1, 7) skips Friday(5) + Saturday(6) — Israeli work week
+  // Build col → calendar date (skipping Fri+Sat — Israeli work week)
   const colDates = {};
   let cur = new Date(startDate);
   for(let c = START_COL; c <= range.e.c; c++){
@@ -3240,48 +3239,82 @@ function parseGanttHorizontal(wb){
     do { cur = new Date(cur.getTime() + 86400000); } while(cur.getDay() === 5 || cur.getDay() === 6);
   }
 
-  // Build topic map from rows 4+5 (r=3, r=4) — category/sub-category labels
-  const topicMap = {};
+  // Read subject names from col C, rows 6–14 (r=5..13)
+  // Rows: 6-10 = locomotive equipment, 11-14 = theory/practical
+  const SUBJECT_ROWS = [];
+  for(let r = 5; r <= 13; r++){
+    const nc = ws[XLSX.utils.encode_cell({r, c:SUBJECT_COL})];
+    const name = nc?.v ? String(nc.v).trim() : '';
+    if(name) SUBJECT_ROWS.push({r, name});
+  }
+
+  // Read phase labels (row 4 = r:3) and sub-labels (row 5 = r:4)
+  const phase4 = {}, sub5 = {};
   for(let c = START_COL; c <= range.e.c; c++){
-    const c4 = ws[XLSX.utils.encode_cell({r:3, c})];
-    const c5 = ws[XLSX.utils.encode_cell({r:4, c})];
-    const v4 = c4?.v ? String(c4.v).trim() : '';
-    const v5 = c5?.v ? String(c5.v).trim() : '';
-    const val = v4 || v5;
-    if(val) topicMap[c] = val;
+    const p = ws[XLSX.utils.encode_cell({r:3, c})];
+    const s = ws[XLSX.utils.encode_cell({r:4, c})];
+    if(p?.v) phase4[c] = String(p.v).trim();
+    if(s?.v) sub5[c] = String(s.v).trim();
   }
-  // Propagate merged cell values left→right
-  const merges = ws['!merges'] || [];
-  for(const m of merges){
-    if(m.s.r <= 4 && m.e.r >= 3){
-      const val = topicMap[m.s.c] || '';
-      for(let c = m.s.c; c <= m.e.c; c++) if(!topicMap[c] && val) topicMap[c] = val;
-    }
-  }
-  // Carry-forward: fill gaps between labeled columns
-  let lastTopic = '';
+  // Carry phase labels forward (they span multiple columns)
+  let lastPhase = '';
   for(let c = START_COL; c <= range.e.c; c++){
-    if(topicMap[c]) lastTopic = topicMap[c];
-    else if(lastTopic) topicMap[c] = lastTopic;
+    if(phase4[c]) lastPhase = phase4[c];
+    else if(lastPhase) phase4[c] = lastPhase;
   }
-  // Carry-backward: fill empty columns before first label using first found label
-  const firstLabel = topicMap[Object.keys(topicMap).map(Number).sort((a,b)=>a-b)[0]] || '';
-  for(let c = START_COL; c <= range.e.c; c++){
-    if(!topicMap[c]) topicMap[c] = firstLabel;
-    else break;
-  }
+
+  // Phases that are meaningful on their own (not just "full day")
+  const FULL_DAY_LABELS = new Set(['יום מלא','full day','יום הכשרה']);
 
   // Build syllabus rows
   const rows = [];
   const vacDates = [];
 
   for(let c = START_COL; c <= range.e.c; c++){
-    const dayCell = ws[XLSX.utils.encode_cell({r:2, c})]; // row 3 = r:2
+    const dayCell = ws[XLSX.utils.encode_cell({r:2, c})]; // row 3
     const dayNum = dayCell?.v;
     const dateStr = formatDate(colDates[c]);
+
     if(typeof dayNum === 'number' && dayNum >= 1){
-      const topic = topicMap[c] || `יום ${dayNum}`;
-      rows.push({ date: dateStr, topic, details: String(dayNum) });
+      const phase = phase4[c] || '';
+      const sub   = sub5[c]   || '';
+
+      // Collect subject hours for this day; separate content rows from resource rows
+      // Resource rows (מדריך/resource tracking) are excluded from topic
+      const locoSubjects = [], contentSubjects = [], allSubjects = [];
+      for(const {r, name} of SUBJECT_ROWS){
+        const vc = ws[XLSX.utils.encode_cell({r, c})];
+        const v = vc?.v;
+        if(typeof v === 'number' && v > 0){
+          allSubjects.push({name, hours:v});
+          const isResource = /מדריך|resource/i.test(name);
+          if(!isResource){
+            if(/קטר|אמל|loco/i.test(name)) locoSubjects.push({name, hours:v});
+            else contentSubjects.push({name, hours:v});
+          }
+        }
+      }
+      locoSubjects.sort((a,b)=>b.hours-a.hours);
+      contentSubjects.sort((a,b)=>b.hours-a.hours);
+
+      // Build topic (priority: specific phase > sub-label > loco > content)
+      let topic;
+      if(phase && !FULL_DAY_LABELS.has(phase)){
+        topic = sub ? `${phase} - ${sub}` : phase;
+      } else if(sub && !FULL_DAY_LABELS.has(sub)){
+        topic = sub;
+      } else if(locoSubjects.length > 0){
+        topic = locoSubjects.slice(0,2).map(s=>s.name).join(' + ');
+      } else if(contentSubjects.length > 0){
+        topic = contentSubjects.slice(0,2).map(s=>s.name).join(' + ');
+      } else {
+        topic = phase || `יום ${dayNum}`;
+      }
+
+      // Details: full hour breakdown (all subjects)
+      const details = allSubjects.sort((a,b)=>b.hours-a.hours).map(s=>`${s.name}: ${s.hours}`).join(' | ');
+
+      rows.push({ date: dateStr, topic, details });
     } else {
       if(dateStr) vacDates.push(dateStr);
     }
