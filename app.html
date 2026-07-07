@@ -805,8 +805,7 @@ async function loadDataFromSupabase(){
 async function saveAllToSupabase(traineesArr, syllabus, courseMeta){
   if(courseMeta === undefined) courseMeta = _courseMeta;
   const {error} = await _sb.from('trainees')
-    .upsert({id:0, data:{trainees:traineesArr, syllabus, courseMeta}})
-    .eq('id', 0);
+    .upsert({id:0, data:{trainees:traineesArr, syllabus, courseMeta}});
   if(error){
     console.error('Save error:',error);
     showToast('שגיאה בשמירה: '+error.message,'error');
