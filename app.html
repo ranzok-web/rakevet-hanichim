@@ -805,7 +805,7 @@ async function loadDataFromSupabase(){
 async function saveAllToSupabase(traineesArr, syllabus, courseMeta){
   if(courseMeta === undefined) courseMeta = _courseMeta;
   const {error} = await _sb.from('trainees')
-    .update({data:{trainees:traineesArr, syllabus, courseMeta}})
+    .upsert({id:0, data:{trainees:traineesArr, syllabus, courseMeta}})
     .eq('id', 0);
   if(error){
     console.error('Save error:',error);
@@ -2687,19 +2687,22 @@ function renderCourseMgmt(){
     </div>`;
 }
 
-function saveCourseDetails(){
+async function saveCourseDetails(){
   const name   = document.getElementById('cm-name').value.trim();
   const cohort = document.getElementById('cm-cohort').value.trim();
   const startDate = document.getElementById('cm-start').value.trim();
   const endDate   = document.getElementById('cm-end').value.trim();
   if(!cohort){ showToast('נא למלא מחזור','error'); return; }
   const meta = {name:name||'קורס נהג משא ישיר', cohort, startDate, endDate};
-  // Update all existing trainees too
   const data = getData().map(t=>({...t, course:meta.name, cohort:meta.cohort, plannedEnd:meta.endDate}));
   _dataCache = data;
-  saveCourseMeta(meta);
-  saveDataToSupabase(data);
-  document.getElementById('dash-sub').textContent=`${meta.name} | מחזור ${meta.cohort}`;
+  _courseMeta = meta;
+  const btn = document.querySelector('[onclick="saveCourseDetails()"]');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ שומר...'; }
+  await saveAllToSupabase(data, _syllabusCache, meta);
+  if(btn){ btn.disabled=false; btn.textContent='💾 שמור פרטי קורס'; }
+  const sub = document.getElementById('dash-sub');
+  if(sub) sub.textContent=`${meta.name} | מחזור ${meta.cohort}`;
   showToast('פרטי הקורס נשמרו','success');
 }
 
