@@ -791,24 +791,56 @@ let isDark = true;
 
 // ── Supabase data functions ───────────────────────────────
 
+const LS_KEY = 'ir_app_data';
+
+function _lsSave(traineesArr, syllabus, courseMeta){
+  try { localStorage.setItem(LS_KEY, JSON.stringify({trainees:traineesArr, syllabus, courseMeta, savedAt:Date.now()})); } catch(e){}
+}
+function _lsLoad(){
+  try { return JSON.parse(localStorage.getItem(LS_KEY)||'null'); } catch(e){ return null; }
+}
+
 async function loadDataFromSupabase(){
-  const {data, error} = await _sb.from('trainees').select('data').eq('id',0).single();
-  if(error){ console.error('Load error:',error); showToast('שגיאה בטעינת נתונים — בדוק חיבור', 'error'); return []; }
-  _syllabusCache = data?.data?.syllabus || null;
-  _courseMeta    = data?.data?.courseMeta || null;
-  const arr = data?.data?.trainees;
-  if(Array.isArray(arr) && arr.length > 0) return migrateTraineeFields(arr);
-  if(Array.isArray(arr)) return []; // empty array = intentionally cleared
-  return []; // null/undefined = no data yet
+  try {
+    const {data, error} = await _sb.from('trainees').select('data').eq('id',0).single();
+    if(!error && data?.data){
+      const d = data.data;
+      _syllabusCache = d.syllabus || null;
+      _courseMeta    = d.courseMeta || null;
+      const arr = d.trainees;
+      _lsSave(Array.isArray(arr)?arr:[], _syllabusCache, _courseMeta); // sync to LS
+      if(Array.isArray(arr) && arr.length > 0) return migrateTraineeFields(arr);
+      if(Array.isArray(arr)) return [];
+      return [];
+    }
+    throw new Error(error?.message||'no data');
+  } catch(e){
+    console.warn('Supabase load failed, using localStorage:', e.message);
+    const ls = _lsLoad();
+    if(ls){
+      _syllabusCache = ls.syllabus || null;
+      _courseMeta    = ls.courseMeta || null;
+      const arr = ls.trainees;
+      showToast('נטען ממצב שמור מקומי (Supabase לא זמין)','warn');
+      if(Array.isArray(arr) && arr.length > 0) return migrateTraineeFields(arr);
+      if(Array.isArray(arr)) return [];
+    } else {
+      showToast('שגיאת חיבור — בדוק אינטרנט','error');
+    }
+    return [];
+  }
 }
 
 async function saveAllToSupabase(traineesArr, syllabus, courseMeta){
   if(courseMeta === undefined) courseMeta = _courseMeta;
-  const {error} = await _sb.from('trainees')
-    .upsert({id:0, data:{trainees:traineesArr, syllabus, courseMeta}});
-  if(error){
-    console.error('Save error:',error);
-    showToast('שגיאה בשמירה: '+error.message,'error');
+  _lsSave(traineesArr, syllabus, courseMeta); // always save locally first
+  try {
+    const {error} = await _sb.from('trainees')
+      .upsert({id:0, data:{trainees:traineesArr, syllabus, courseMeta}});
+    if(error) throw new Error(error.message);
+  } catch(e){
+    console.warn('Supabase save failed (saved locally):', e.message);
+    showToast('נשמר מקומית — Supabase לא זמין, הנתונים יסונכרנו בחיבור הבא','warn');
   }
 }
 
