@@ -433,6 +433,10 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       סילבוס הקורס
     </div>
+    <div class="nav-item" data-view="course-mgmt" onclick="navigate('course-mgmt')" id="nav-course-mgmt" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/></svg>
+      ניהול קורס
+    </div>
     <div class="nav-item" data-view="profile" onclick="navigate('profile')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       פרופיל אישי
@@ -510,6 +514,14 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
     </div>
   </div>
   <div id="syllabus-content"></div>
+</div>
+
+<!-- COURSE MANAGEMENT VIEW -->
+<div id="view-course-mgmt" class="view">
+  <div class="page-header">
+    <div><div class="page-title">ניהול קורס</div><div class="page-sub">הגדרות, סילבוס, גאנט ורשימת חניכים</div></div>
+  </div>
+  <div id="course-mgmt-content"></div>
 </div>
 
 <!-- PROFILE VIEW -->
@@ -627,6 +639,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let _dataCache = null;
 let _syllabusCache = null; // {rows:[{date,topic,details}], uploadedAt}
+let _courseMeta = null;   // {name, cohort, startDate, endDate}
 
 const _emptyScores = () => ({
   motivation:    Array(4).fill(null).map(()=>[null,null]),
@@ -782,15 +795,19 @@ async function loadDataFromSupabase(){
   const {data, error} = await _sb.from('trainees').select('data').eq('id',0).single();
   if(error){ console.error('Load error:',error); return INITIAL_TRAINEES; }
   _syllabusCache = data?.data?.syllabus || null;
+  _courseMeta    = data?.data?.courseMeta || null;
   const arr = data?.data?.trainees;
   if(arr && arr.length > 0) return migrateTraineeFields(arr);
-  await saveAllToSupabase(INITIAL_TRAINEES, null);
+  // Fresh DB — don't auto-load INITIAL_TRAINEES, allow clean start
+  if(arr && arr.length === 0) return [];
+  await saveAllToSupabase(INITIAL_TRAINEES, null, null);
   return INITIAL_TRAINEES;
 }
 
-async function saveAllToSupabase(traineesArr, syllabus){
+async function saveAllToSupabase(traineesArr, syllabus, courseMeta){
+  if(courseMeta === undefined) courseMeta = _courseMeta;
   const {error} = await _sb.from('trainees')
-    .update({data:{trainees:traineesArr, syllabus:syllabus}})
+    .update({data:{trainees:traineesArr, syllabus, courseMeta}})
     .eq('id', 0);
   if(error){
     console.error('Save error:',error);
@@ -799,12 +816,17 @@ async function saveAllToSupabase(traineesArr, syllabus){
 }
 
 async function saveDataToSupabase(arr){
-  await saveAllToSupabase(arr, _syllabusCache);
+  await saveAllToSupabase(arr, _syllabusCache, _courseMeta);
 }
 
 async function saveSyllabus(syllabus){
   _syllabusCache = syllabus;
-  await saveAllToSupabase(_dataCache, syllabus);
+  await saveAllToSupabase(_dataCache, syllabus, _courseMeta);
+}
+
+async function saveCourseMeta(meta){
+  _courseMeta = meta;
+  await saveAllToSupabase(_dataCache, _syllabusCache, meta);
 }
 
 function getData(){ return _dataCache || []; }
@@ -986,6 +1008,7 @@ function navigate(view, traineeId){
   else if(view==='trainee' && traineeId) renderTraineeDetail(traineeId, false);
   else if(view==='profile') renderProfile();
   else if(view==='syllabus') renderSyllabus();
+  else if(view==='course-mgmt') renderCourseMgmt();
   window.scrollTo(0,0);
 }
 
@@ -1022,6 +1045,7 @@ async function initApp(){
   document.getElementById('nav-trainees').style.display=canSeeAll?'':'none';
   document.getElementById('btn-add-trainee').style.display=canSeeAll?'':'none';
   document.getElementById('btn-new-course').style.display=canSeeAll?'':'none';
+  document.getElementById('nav-course-mgmt').style.display=canSeeAll?'':'none';
   document.getElementById('btn-export-all').style.display=canSeeAll?'':'none';
   document.getElementById('btn-import').style.display=canSeeAll?'':'none';
   document.getElementById('btn-upload-syllabus').style.display=canSeeAll?'':'none';
@@ -1103,7 +1127,21 @@ function renderDashboard(){
     el.innerHTML=renderTraineeCard(t);
   } else {
     document.getElementById('dash-title').textContent='לוח בקרה';
+    const cm=_courseMeta;
+    document.getElementById('dash-sub').textContent=
+      cm ? `${cm.name||'קורס נהג משא ישיר'} | מחזור ${cm.cohort||''}` : 'קורס נהג משא ישיר';
     const data=getData();
+
+    if(data.length===0 && (currentUser.role==='instructor'||currentUser.role==='manager')){
+      el.innerHTML=`<div class="card" style="text-align:center;padding:48px 24px">
+        <div style="font-size:48px;margin-bottom:16px">🚂</div>
+        <h2 style="margin:0 0 8px;color:var(--text)">ברוכים הבאים — מוכן לקורס חדש</h2>
+        <p style="color:var(--text2);margin:0 0 28px;font-size:15px">טרם הוגדרו חניכים. עבור לדף ניהול קורס כדי להגדיר את פרטי הקורס,<br>להעלות סילבוס וגאנט ולייבא רשימת חניכים.</p>
+        <button class="btn btn-primary" style="font-size:15px;padding:12px 32px" onclick="navigate('course-mgmt')">⚙️ פתח ניהול קורס</button>
+      </div>`;
+      return;
+    }
+
     const {todayTopic} = _getDashSyllabusInfo();
     const {startDate, endDate, dayNum, totalDays, pct} = _getCourseProgress();
     el.innerHTML=`
@@ -2592,6 +2630,183 @@ function getEffectiveTodayIdx(rows, vacDays){
     if(d&&d<=today) last=i; else break;
   }
   return {idx:last, isOffDay:true};
+}
+
+// ============================================================
+// COURSE MANAGEMENT PAGE
+// ============================================================
+
+function renderCourseMgmt(){
+  const el = document.getElementById('course-mgmt-content');
+  const cm = _courseMeta || {};
+  const data = getData();
+  el.innerHTML = `
+    <!-- פרטי הקורס -->
+    <div class="card" style="margin-bottom:20px">
+      <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">📋 פרטי הקורס</div>
+      <div class="grid2" style="gap:12px;margin-bottom:16px">
+        <div class="form-group"><label>שם הקורס</label>
+          <input class="edit-input" id="cm-name" value="${cm.name||'קורס נהג משא ישיר'}">
+        </div>
+        <div class="form-group"><label>מחזור</label>
+          <input class="edit-input" id="cm-cohort" value="${cm.cohort||''}" placeholder="לדוגמה: 09/2026">
+        </div>
+        <div class="form-group"><label>תאריך התחלה (DD.MM.YY)</label>
+          <input class="edit-input" id="cm-start" value="${cm.startDate||''}" placeholder="01.09.26">
+        </div>
+        <div class="form-group"><label>תאריך סיום מתוכנן (DD.MM.YY)</label>
+          <input class="edit-input" id="cm-end" value="${cm.endDate||''}" placeholder="31.12.26">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="saveCourseDetails()">💾 שמור פרטי קורס</button>
+        ${data.length>0?`<span style="font-size:12px;color:var(--text2);align-self:center">הפרטים יעודכנו גם על ${data.length} החניכים הקיימים</span>`:''}
+      </div>
+    </div>
+
+    <!-- סילבוס וגאנט -->
+    <div class="card" style="margin-bottom:20px">
+      <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">📅 סילבוס וגאנט</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="openSyllabusUpload()">📅 העלאת סילבוס מאקסל</button>
+        <button class="btn btn-outline" onclick="openGanttSync()">📊 סנכרן גאנט PDF</button>
+      </div>
+      ${_syllabusCache?.rows?.length ? `<div style="margin-top:12px;font-size:13px;color:var(--text2)">✅ סילבוס קיים — ${_syllabusCache.rows.length} ימי לימוד</div>` : `<div style="margin-top:12px;font-size:13px;color:var(--warn)">⚠️ אין סילבוס — לחץ "העלאת סילבוס" להוספה</div>`}
+    </div>
+
+    <!-- ייבוא חניכים -->
+    <div class="card" style="margin-bottom:20px">
+      <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">👥 ייבוא רשימת חניכים מאקסל</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">
+        הקובץ צריך להכיל עמודות: <strong>שם</strong>, <strong>מ. עובד</strong> (מספר עובד), <strong>מתחם</strong>.<br>
+        עמודות אופציונליות: <strong>גיל</strong>, <strong>מצב משפחתי</strong>, <strong>השכלה</strong>, <strong>שם משתמש</strong>.
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <label class="btn btn-outline" style="cursor:pointer">
+          📂 בחר קובץ אקסל
+          <input type="file" accept=".xlsx,.xls" style="display:none" onchange="previewTraineeImport(event)">
+        </label>
+        ${data.length>0?`<span style="font-size:12px;color:var(--warn)">⚠️ ייבוא יוסיף חניכים לרשימה הקיימת (${data.length} חניכים)</span>`:''}
+      </div>
+      <div id="trainee-import-preview" style="margin-top:16px"></div>
+    </div>
+
+    <!-- איפוס קורס -->
+    <div class="card" style="border:1px solid rgba(220,53,69,.3)">
+      <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">⚠️ פתיחת קורס חדש / איפוס</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">מחיקת כל נתוני הקורס הנוכחי ופתיחת קורס חדש.</div>
+      <button class="btn btn-outline" style="border-color:#dc3545;color:#dc3545" onclick="openNewCourseModal()">🔄 פתח קורס חדש</button>
+    </div>`;
+}
+
+function saveCourseDetails(){
+  const name   = document.getElementById('cm-name').value.trim();
+  const cohort = document.getElementById('cm-cohort').value.trim();
+  const startDate = document.getElementById('cm-start').value.trim();
+  const endDate   = document.getElementById('cm-end').value.trim();
+  if(!cohort){ showToast('נא למלא מחזור','error'); return; }
+  const meta = {name:name||'קורס נהג משא ישיר', cohort, startDate, endDate};
+  // Update all existing trainees too
+  const data = getData().map(t=>({...t, course:meta.name, cohort:meta.cohort, plannedEnd:meta.endDate}));
+  _dataCache = data;
+  saveCourseMeta(meta);
+  saveDataToSupabase(data);
+  document.getElementById('dash-sub').textContent=`${meta.name} | מחזור ${meta.cohort}`;
+  showToast('פרטי הקורס נשמרו','success');
+}
+
+let _pendingTraineeImport = [];
+
+function previewTraineeImport(e){
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const wb = XLSX.read(ev.target.result, {type:'binary'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = _parseExcelAuto(ws);
+      if(!rows.length){ showToast('לא נמצאו נתונים בקובץ','error'); return; }
+
+      // Map columns flexibly
+      const hdr = Object.keys(rows[0]);
+      const col = (opts) => hdr.find(h => opts.some(o => h.includes(o))) || null;
+      const cName   = col(['שם','name','Name']);
+      const cEmpId  = col(['מ. עובד','מספר עובד','Emp ID','emp_id','employeeId','employee']);
+      const cLoc    = col(['מתחם','location','Location','עיר']);
+      const cAge    = col(['גיל','age','Age']);
+      const cFamily = col(['משפחתי','family','Family']);
+      const cEdu    = col(['השכלה','education','Education']);
+      const cUser   = col(['משתמש','username','user']);
+
+      if(!cName){ showToast('לא נמצאה עמודת שם','error'); return; }
+
+      _pendingTraineeImport = rows
+        .filter(r => String(r[cName]||'').trim())
+        .map(r => {
+          const name = String(r[cName]||'').trim();
+          const empId = cEmpId ? String(r[cEmpId]||'').trim() : '';
+          const loc   = cLoc   ? String(r[cLoc]||'').trim()   : '';
+          const age   = cAge   ? parseInt(r[cAge]) || null      : null;
+          const fam   = cFamily? String(r[cFamily]||'').trim() : '';
+          const edu   = cEdu   ? String(r[cEdu]||'').trim()    : '';
+          // Auto username: empId or transliterate first word to lowercase letters
+          let uname = cUser ? String(r[cUser]||'').trim().replace(/\s+/g,'') : '';
+          if(!uname) uname = empId ? 'u'+empId : name.split(' ')[0].replace(/[^a-zA-Z]/g,'').toLowerCase() || 'user'+Math.random().toString(36).slice(2,6);
+          return {name, employeeId:empId, location:loc, age, familyStatus:fam, education:edu, username:uname};
+        });
+
+      const preview = document.getElementById('trainee-import-preview');
+      preview.innerHTML = `
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">נמצאו ${_pendingTraineeImport.length} חניכים:</div>
+        <div class="table-wrap" style="max-height:240px;overflow-y:auto"><table>
+          <thead><tr><th>שם</th><th>מ. עובד</th><th>מתחם</th><th>שם משתמש</th></tr></thead>
+          <tbody>${_pendingTraineeImport.map(t=>`<tr>
+            <td>${t.name}</td>
+            <td style="font-size:12px;color:var(--text2)">${t.employeeId||'—'}</td>
+            <td style="font-size:12px;color:var(--text2)">${t.location||'—'}</td>
+            <td style="font-size:12px;color:var(--text2)">${t.username}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary" onclick="confirmTraineeImport()">✅ ייבא ${_pendingTraineeImport.length} חניכים</button>
+          <button class="btn btn-outline" onclick="document.getElementById('trainee-import-preview').innerHTML='';_pendingTraineeImport=[]">ביטול</button>
+        </div>`;
+    } catch(err){ showToast('שגיאה בקריאת הקובץ: '+err.message,'error'); }
+  };
+  reader.readAsBinaryString(file);
+}
+
+function confirmTraineeImport(){
+  if(!_pendingTraineeImport.length) return;
+  const cm = _courseMeta || {};
+  const users = getUsers();
+  let added = 0, skipped = 0;
+  _pendingTraineeImport.forEach(p => {
+    // Skip if username already exists
+    if(users.find(u=>u.username===p.username)){
+      p.username = p.username + '_' + Math.random().toString(36).slice(2,4);
+    }
+    addTrainee({
+      name: p.name, username: p.username, employeeId: p.employeeId,
+      photo: null,
+      course: cm.name||'קורס נהג משא ישיר',
+      cohort: cm.cohort||'',
+      plannedEnd: cm.endDate||'',
+      age: p.age, location: p.location,
+      familyStatus: p.familyStatus, education: p.education,
+      status:'בהמתנה', instructorEval:'',
+      gaps:['','',''], recommendations:['','',''],
+      behavioralGap:'', rolefit:null,
+      theoryScores: _emptyTheory(),
+      practicalTests: _emptyPractical(),
+      evalDates:['',''], scores: _emptyScores()
+    });
+    added++;
+  });
+  _pendingTraineeImport = [];
+  buildTraineeNavLinks();
+  renderCourseMgmt();
+  showToast(`יובאו ${added} חניכים בהצלחה`,'success');
 }
 
 function renderSyllabus(){
