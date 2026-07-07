@@ -1764,10 +1764,10 @@ function openNewCourseModal(){
           </label>
         </div>
 
-        <div style="margin-bottom:20px">
-          <label style="font-size:13px;color:var(--text2)">לאישור הפעולה הקלד <strong style="color:var(--text)">אישור</strong>:</label>
-          <input class="edit-input" id="nc-confirm" placeholder="הקלד אישור" style="margin-top:6px;text-align:center">
-        </div>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:20px;padding:10px 12px;border:1px solid rgba(220,53,69,.3);border-radius:var(--r2);background:rgba(220,53,69,.05)">
+          <input type="checkbox" id="nc-confirm-check" style="width:18px;height:18px;accent-color:#dc3545;flex-shrink:0">
+          <span style="font-size:13px;color:var(--text)">אני מאשר/ת שהפעולה תאפס את נתוני הקורס ולא ניתן לשחזרם</span>
+        </label>
 
       </div>
       <div class="modal-actions">
@@ -1785,8 +1785,7 @@ function openNewCourseModal(){
 }
 
 function confirmNewCourse(){
-  const confirm = document.getElementById('nc-confirm').value.trim();
-  if(confirm !== 'אישור'){ showToast('נא הקלד "אישור" כדי לאשר','error'); return; }
+  if(!document.getElementById('nc-confirm-check').checked){ showToast('נא לסמן את תיבת האישור','error'); return; }
   const course = document.getElementById('nc-course').value.trim() || 'קורס נהג משא ישיר';
   const cohort = document.getElementById('nc-cohort').value.trim();
   const plannedEnd = document.getElementById('nc-end').value.trim();
