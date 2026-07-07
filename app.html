@@ -911,7 +911,7 @@ async function saveAllToSupabase(traineesArr, syllabus, courseMeta){
     if(error) throw new Error(error.message);
   } catch(e){
     console.warn('Supabase save failed (saved locally):', e.message);
-    showToast('נשמר מקומית — Supabase לא זמין, הנתונים יסונכרנו בחיבור הבא','warn');
+    // No toast — LS save already succeeded; Supabase unavailability shown at load time
   }
 }
 
