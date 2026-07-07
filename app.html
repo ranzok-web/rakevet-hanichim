@@ -348,6 +348,77 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
   padding:8px 14px;border-radius:var(--r2);font-size:13px;font-weight:600;cursor:pointer}
 .btn-cancel-edit:hover{background:rgba(255,255,255,.3)}
 
+/* ===== MOBILE ===== */
+@media(max-width:768px){
+  /* Header */
+  .hdr-user .uname{display:none}
+  .hdr-logo .logo-names .l2{display:none}
+  header{padding:0 12px;gap:8px}
+
+  /* Page header: stack buttons below title */
+  .page-header{flex-direction:column;align-items:flex-start;gap:8px;margin-bottom:16px}
+  .page-header > div:last-child{display:flex;flex-wrap:wrap;gap:6px;width:100%}
+  .page-header .btn{flex:1;min-width:calc(50% - 6px);justify-content:center;
+    padding:8px 10px;font-size:12px}
+  .page-title{font-size:18px}
+
+  /* Cards */
+  .card{padding:16px}
+  main{padding:12px}
+
+  /* Modals - full width */
+  .modal-overlay{padding:8px;align-items:flex-end}
+  .modal{max-width:100%;border-radius:16px 16px 0 0;padding:20px 16px;
+    max-height:90vh;overflow-y:auto}
+  .modal-actions{flex-direction:column-reverse;gap:8px}
+  .modal-actions .btn{width:100%;justify-content:center}
+  .modal-header h3{font-size:16px}
+
+  /* Toasts */
+  .toast-wrap{bottom:0;right:0;left:0;padding:0 8px 8px}
+  .toast{min-width:unset;width:100%;font-size:13px}
+
+  /* Trainee header */
+  .trainee-hdr{padding:16px;gap:12px}
+  .trainee-hdr-info h2{font-size:18px}
+  .trainee-hdr-info .meta{gap:8px;font-size:12px}
+  .trainee-hdr-actions{flex-wrap:wrap;gap:6px}
+  .trainee-hdr-actions .btn{font-size:12px;padding:6px 10px}
+
+  /* Tabs - scrollable */
+  .tabs{gap:0;padding-bottom:2px}
+  .tab{padding:8px 12px;font-size:13px}
+
+  /* Scores table */
+  .score-table{font-size:12px}
+  .score-table th,.score-table td{padding:6px 8px}
+  .score-input{width:54px;font-size:13px;padding:4px 2px}
+
+  /* Dashboard stat cards: 2 columns */
+  .stat-card{padding:14px}
+  .stat-card .stat-val{font-size:22px}
+
+  /* Info grid */
+  .info-grid{grid-template-columns:1fr 1fr}
+
+  /* Search bar */
+  .search-bar input{min-width:0}
+
+  /* Table cells */
+  tbody td{padding:10px 10px;font-size:13px}
+  thead th{padding:8px 10px;font-size:11px}
+
+  /* Edit banner */
+  .edit-banner{padding:10px 12px}
+  .edit-banner .eb-text{font-size:13px}
+}
+@media(max-width:480px){
+  .info-grid{grid-template-columns:1fr}
+  .page-header .btn{min-width:100%}
+  .trainee-hdr{padding:12px}
+  main{padding:10px}
+}
+
 /* ===== PRINT ===== */
 @media print{
   #sidebar,header .hdr-actions,.trainee-hdr-actions,.tabs,.btn,footer{display:none!important}
@@ -2739,6 +2810,25 @@ async function saveCourseDetails(){
 
 let _pendingTraineeImport = [];
 
+function _parseTraineeExcel(ws){
+  const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+  if(!raw.length) return {rows:[], headers:[]};
+  // Find the header row — look for any row containing a name-like or id-like column
+  const nameKw  = ['שם','name'];
+  const idKw    = ['עובד','emp','id','מ.'];
+  const isHdr = row => row.some(c => {
+    const s = String(c||'').trim().toLowerCase();
+    return nameKw.some(k=>s.includes(k)) || idKw.some(k=>s.includes(k));
+  });
+  let hdrIdx = raw.findIndex(isHdr);
+  if(hdrIdx < 0) hdrIdx = 0; // fallback: use first row
+  const headers = raw[hdrIdx].map(h => String(h||'').trim());
+  const rows = raw.slice(hdrIdx+1)
+    .filter(r => r.some(c => c !== '' && c !== null && c !== undefined))
+    .map(r => { const o={}; headers.forEach((h,i)=>{ o[h]=r[i]??''; }); return o; });
+  return {rows, headers};
+}
+
 function previewTraineeImport(e){
   const file = e.target.files[0]; if(!file) return;
   const reader = new FileReader();
@@ -2746,18 +2836,17 @@ function previewTraineeImport(e){
     try {
       const wb = XLSX.read(ev.target.result, {type:'binary'});
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = _parseExcelAuto(ws);
+      const {rows, headers} = _parseTraineeExcel(ws);
       if(!rows.length){ showToast('לא נמצאו נתונים בקובץ','error'); return; }
 
-      // Map columns flexibly
-      const hdr = Object.keys(rows[0]);
-      const col = (opts) => hdr.find(h => opts.some(o => h.includes(o))) || null;
-      const cName   = col(['שם','name','Name']);
-      const cEmpId  = col(['מ. עובד','מספר עובד','Emp ID','emp_id','employeeId','employee']);
-      const cLoc    = col(['מתחם','location','Location','עיר']);
-      const cAge    = col(['גיל','age','Age']);
-      const cFamily = col(['משפחתי','family','Family']);
-      const cEdu    = col(['השכלה','education','Education']);
+      // Map columns flexibly — case-insensitive partial match
+      const col = (opts) => headers.find(h => opts.some(o => h.toLowerCase().includes(o.toLowerCase()))) || null;
+      const cName   = col(['שם','name']);
+      const cEmpId  = col(['מ. עובד','מספר עובד','emp id','emp_id','employeeid','עובד']);
+      const cLoc    = col(['מתחם','location','עיר']);
+      const cAge    = col(['גיל','age']);
+      const cFamily = col(['משפחתי','family']);
+      const cEdu    = col(['השכלה','education']);
       const cUser   = col(['משתמש','username','user']);
 
       if(!cName){ showToast('לא נמצאה עמודת שם','error'); return; }
@@ -2798,37 +2887,49 @@ function previewTraineeImport(e){
   reader.readAsBinaryString(file);
 }
 
-function confirmTraineeImport(){
+async function confirmTraineeImport(){
   if(!_pendingTraineeImport.length) return;
   const cm = _courseMeta || {};
+  const existingData = getData();
   const users = getUsers();
-  let added = 0, skipped = 0;
+  let maxId = Math.max(...existingData.map(t=>t.id), 0);
+  const newTrainees = [];
+  const newUsers = [...users];
+
   _pendingTraineeImport.forEach(p => {
-    // Skip if username already exists
-    if(users.find(u=>u.username===p.username)){
-      p.username = p.username + '_' + Math.random().toString(36).slice(2,4);
-    }
-    addTrainee({
-      name: p.name, username: p.username, employeeId: p.employeeId,
+    let uname = p.username;
+    // Ensure unique username
+    while(newUsers.find(u=>u.username===uname))
+      uname = uname + '_' + Math.random().toString(36).slice(2,4);
+    maxId++;
+    const t = {
+      id: maxId,
+      name: p.name, username: uname, employeeId: p.employeeId,
       photo: null,
       course: cm.name||'קורס נהג משא ישיר',
-      cohort: cm.cohort||'',
-      plannedEnd: cm.endDate||'',
+      cohort: cm.cohort||'', plannedEnd: cm.endDate||'',
       age: p.age, location: p.location,
       familyStatus: p.familyStatus, education: p.education,
       status:'בהמתנה', instructorEval:'',
       gaps:['','',''], recommendations:['','',''],
       behavioralGap:'', rolefit:null,
-      theoryScores: _emptyTheory(),
-      practicalTests: _emptyPractical(),
+      theoryScores: _emptyTheory(), practicalTests: _emptyPractical(),
       evalDates:['',''], scores: _emptyScores()
-    });
-    added++;
+    };
+    newTrainees.push(t);
+    newUsers.push({id:maxId, username:uname, password:uname+'123', role:'trainee', traineeId:maxId, name:p.name});
   });
+
+  // Single batch save
+  const allTrainees = [...existingData, ...newTrainees];
+  _dataCache = allTrainees;
+  saveUsers(newUsers);
+  await saveAllToSupabase(allTrainees, _syllabusCache, _courseMeta);
+
   _pendingTraineeImport = [];
   buildTraineeNavLinks();
   renderCourseMgmt();
-  showToast(`יובאו ${added} חניכים בהצלחה`,'success');
+  showToast(`✓ יובאו ${newTrainees.length} חניכים בהצלחה`, 'success');
 }
 
 function renderSyllabus(){
