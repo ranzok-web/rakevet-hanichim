@@ -1042,25 +1042,36 @@ function _getCourseProgress(){
   return {startDate, endDate, dayNum, totalDays, pct};
 }
 
+const COURSE_EXAMS_DEFAULT = [
+  {date:'11/08/2026', name:'יורו 4000'},
+  {date:'20/08/2026', name:'JT'},
+  {date:'06/09/2026', name:'GM'},
+  {date:'14/09/2026', name:'סימנורים'},
+  {date:'16/09/2026', name:'חומ"ס'},
+  {date:'14/10/2026', name:'נהלים בשגרה'},
+  {date:'01/11/2026', name:'נהלים בלתי תקין'},
+];
+
+function _getNextExam(){
+  const exams = _courseMeta?.exams || COURSE_EXAMS_DEFAULT;
+  const now = new Date(); now.setHours(0,0,0,0);
+  for(const ex of exams){
+    const d = parseDate(ex.date);
+    if(d && d >= now) return ex;
+  }
+  return null;
+}
+
 function _getDashSyllabusInfo(){
   const syl = _syllabusCache;
   let todayTopic = 'אין שיעור היום';
-  let nextExam = {topic:'לא נמצא',date:''};
-  if(!syl?.rows?.length) return {todayTopic, nextExam};
+  if(!syl?.rows?.length) return {todayTopic};
   const now = new Date(); now.setHours(0,0,0,0);
   const pad = n=>String(n).padStart(2,'0');
   const todayStr = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()}`;
   const todayRow = syl.rows.find(r=>r.date===todayStr);
   if(todayRow) todayTopic = todayRow.topic;
-  const examKW = ['מבחן','GM','יורו','JT','סימנורים','EURO'];
-  for(const row of syl.rows){
-    const p=row.date?.split('/');
-    if(!p||p.length<3) continue;
-    const d=new Date(+p[2],+p[1]-1,+p[0]);
-    if(d<=now) continue;
-    if(examKW.some(k=>(row.topic||'').includes(k))){ nextExam={topic:row.topic,date:row.date}; break; }
-  }
-  return {todayTopic, nextExam};
+  return {todayTopic};
 }
 
 function renderDashboard(){
@@ -1089,6 +1100,7 @@ function renderDashboard(){
     }
 
     const {todayTopic} = _getDashSyllabusInfo();
+    const nextExam = _getNextExam();
     const {startDate, endDate, dayNum, totalDays, pct} = _getCourseProgress();
     el.innerHTML=`
       <div class="stats-grid">
@@ -1096,6 +1108,12 @@ function renderDashboard(){
           ${(()=>{const locs={};data.forEach(t=>{const l=t.location||'לא ידוע';locs[l]=(locs[l]||0)+1;});return `<div style="font-size:11px;color:var(--text2);margin-top:2px;line-height:1.6">`+Object.entries(locs).map(([l,c])=>`${c} ${l}`).join(' | ')+`</div>`;})()}
           <div class="stat-lbl">חניכים בקורס</div></div>
         <div class="stat-card" style="cursor:default"><div class="stat-icon">📖</div><div class="stat-val" style="font-size:13px;line-height:1.3">${todayTopic}</div><div class="stat-lbl">הנושא היום</div></div>
+        <div class="stat-card" style="cursor:pointer" onclick="navigate('course-mgmt')"><div class="stat-icon">📝</div>
+          ${nextExam
+            ? `<div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.3">${nextExam.name}</div>
+               <div style="font-size:12px;color:var(--accent);font-weight:600;margin-top:3px">${nextExam.date}</div>`
+            : `<div style="font-size:13px;color:var(--text3)">אין מבחנים קרובים</div>`}
+          <div class="stat-lbl">מבחן קרוב</div></div>
         <div class="stat-card" style="cursor:default"><div class="stat-icon">🗓️</div>
           <div style="font-size:12px;color:var(--text2);margin-bottom:2px">התחלה: <strong style="color:var(--text)">${startDate}</strong></div>
           <div style="font-size:12px;color:var(--text2)">סיום: <strong style="color:var(--text)">${endDate}</strong></div>
@@ -2624,6 +2642,23 @@ function renderCourseMgmt(){
       ${_syllabusCache?.rows?.length ? `<div style="margin-top:12px;font-size:13px;color:var(--text2)">✅ סילבוס קיים — ${_syllabusCache.rows.length} ימי לימוד</div>` : `<div style="margin-top:12px;font-size:13px;color:var(--warn)">⚠️ אין סילבוס — לחץ "העלאת סילבוס" להוספה</div>`}
     </div>
 
+    <!-- מועדי מבחנים -->
+    <div class="card" style="margin-bottom:20px">
+      <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">📝 מועדי מבחנים</div>
+      <div id="exams-list">
+        ${(cm.exams||COURSE_EXAMS_DEFAULT).map((ex,i)=>`
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+            <input class="edit-input" id="exam-date-${i}" value="${ex.date}" placeholder="DD/MM/YYYY" style="width:120px;flex-shrink:0">
+            <input class="edit-input" id="exam-name-${i}" value="${ex.name}" placeholder="שם המבחן" style="flex:1">
+            <button onclick="removeExamRow(${i})" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--danger);font-size:16px;cursor:pointer;flex-shrink:0">✕</button>
+          </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-outline btn-sm" onclick="addExamRow()">+ הוסף מבחן</button>
+        <button class="btn btn-primary btn-sm" onclick="saveExamDates()">💾 שמור מועדי מבחנים</button>
+      </div>
+    </div>
+
     <!-- ייבוא חניכים -->
     <div class="card" style="margin-bottom:20px">
       <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">👥 ייבוא רשימת חניכים מאקסל</div>
@@ -2650,6 +2685,41 @@ function renderCourseMgmt(){
         <button class="btn btn-outline" style="border-color:#dc3545;color:#dc3545;font-size:12px" onclick="clearLocalDataAndReload()">🗑️ נקה נתונים מקומיים וטען מחדש</button>
       </div>
     </div>`;
+}
+
+function addExamRow(){
+  const list = document.getElementById('exams-list');
+  if(!list) return;
+  const i = list.children.length;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px';
+  div.innerHTML = `<input class="edit-input" id="exam-date-${i}" placeholder="DD/MM/YYYY" style="width:120px;flex-shrink:0">
+    <input class="edit-input" id="exam-name-${i}" placeholder="שם המבחן" style="flex:1">
+    <button onclick="this.closest('div').remove()" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--danger);font-size:16px;cursor:pointer;flex-shrink:0">✕</button>`;
+  list.appendChild(div);
+}
+
+function removeExamRow(i){
+  const list = document.getElementById('exams-list');
+  if(list && list.children[i]) list.children[i].remove();
+}
+
+async function saveExamDates(){
+  const list = document.getElementById('exams-list');
+  if(!list) return;
+  const exams = [];
+  list.querySelectorAll('div').forEach(row=>{
+    const dateEl = row.querySelector('[id^="exam-date-"]');
+    const nameEl = row.querySelector('[id^="exam-name-"]');
+    const date = dateEl?.value?.trim();
+    const name = nameEl?.value?.trim();
+    if(date && name) exams.push({date, name});
+  });
+  // Sort by date
+  exams.sort((a,b)=>{ const da=parseDate(a.date),db=parseDate(b.date); return (da&&db)?da-db:0; });
+  _courseMeta = {...(_courseMeta||{}), exams};
+  await saveAllToSupabase(_dataCache, _syllabusCache, _courseMeta);
+  showToast(`✓ ${exams.length} מועדי מבחנים נשמרו`, 'success');
 }
 
 async function saveCourseDetails(){
@@ -2725,7 +2795,7 @@ function previewTraineeImport(e){
           const edu   = cEdu   ? String(r[cEdu]||'').trim()    : '';
           // Auto username: empId or transliterate first word to lowercase letters
           let uname = cUser ? String(r[cUser]||'').trim().replace(/\s+/g,'') : '';
-          if(!uname) uname = empId ? 'u'+empId : name.split(' ')[0].replace(/[^a-zA-Z]/g,'').toLowerCase() || 'user'+Math.random().toString(36).slice(2,6);
+          if(!uname) uname = empId || name.split(' ')[0].replace(/[^a-zA-Z]/g,'').toLowerCase() || 'user'+Math.random().toString(36).slice(2,6);
           return {name, employeeId:empId, location:loc, age, familyStatus:fam, education:edu, username:uname};
         });
 
@@ -2780,7 +2850,7 @@ async function confirmTraineeImport(){
       evalDates:['',''], scores: _emptyScores()
     };
     newTrainees.push(t);
-    newUsers.push({id:maxId, username:uname, password:uname+'123', role:'trainee', traineeId:maxId, name:p.name});
+    newUsers.push({id:maxId, username:uname, password:p.employeeId||uname, role:'trainee', traineeId:maxId, name:p.name});
   });
 
   // Single batch save
@@ -2828,6 +2898,9 @@ function renderSyllabus(){
     .day-counter{animation:countUp .6s ease-out forwards}
     #syllabus-timeline::-webkit-scrollbar{display:none}
     #syllabus-timeline{-ms-overflow-style:none;scrollbar-width:none}
+    .syl-topic{font-weight:700;white-space:normal;word-break:break-word;font-size:clamp(15px,4.5vw,16px)}
+    .syl-date{font-size:clamp(11px,3vw,12px);color:var(--text3)}
+    .syl-daynum{font-size:clamp(16px,5vw,17px);font-weight:900}
   </style>
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
@@ -2872,12 +2945,12 @@ function renderSyllabus(){
     const border=isActive?'2px solid rgba(247,183,50,.5)':'1px solid var(--border)';
     html+=`<div id="${isActive?'syllabus-today':''}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:${bg};border:${border};border-radius:var(--r2);margin-bottom:2px">
       <div style="flex-shrink:0;text-align:center;width:38px">
-        <div style="font-size:15px;font-weight:900;color:${color}">${i+1}</div>
+        <div class="syl-daynum" style="color:${color}">${i+1}</div>
         <div style="font-size:9px;color:var(--text3)">${d?dayLabel(d):''}</div>
       </div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:11px;color:var(--text3)">${r.date||''} ${isActive?`<span style="color:var(--accent);font-weight:700">${isOffDay?'← יום אחרון':'← היום'}</span>`:''}</div>
-        <div style="font-size:13px;font-weight:700;color:${isActive?'var(--accent)':isPast?'var(--text)':'var(--text2)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.topic||''}</div>
+        <div class="syl-date">${r.date||''} ${isActive?`<span style="color:var(--accent);font-weight:700">${isOffDay?'← יום אחרון':'← היום'}</span>`:''}</div>
+        <div class="syl-topic" style="color:${isActive?'var(--accent)':isPast?'var(--text)':'var(--text2)'}">${r.topic||''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <div style="font-size:14px">${isPast?'✅':isActive?'📌':'⏳'}</div>
