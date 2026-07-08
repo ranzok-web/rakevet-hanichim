@@ -492,9 +492,13 @@ footer{grid-area:foot;background:var(--hdr);border-top:1px solid rgba(255,255,25
 <aside id="sidebar">
   <div class="nav-section">
     <div class="nav-label">ניווט</div>
-    <div class="nav-item active" data-view="dashboard" onclick="navigate('dashboard')">
+    <div class="nav-item active" data-view="dashboard" onclick="navigate('dashboard')" id="nav-dashboard">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       לוח בקרה
+    </div>
+    <div class="nav-item" id="nav-my-data" data-view="trainee" style="display:none" onclick="navigate('trainee',currentUser&&currentUser.traineeId)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      האזור שלי
     </div>
     <div class="nav-item" data-view="trainees" onclick="navigate('trainees')" id="nav-trainees">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -724,7 +728,7 @@ const _emptyTheory = () => ({signals:null,jt42:null,euro4000:null,gm:[],routine:
 const INITIAL_TRAINEES = [];
 
 const USERS = [
-  {id:100,username:'madrich',password:'train2025',role:'instructor',name:'המדריך הקורס'},
+  {id:100,username:'madrich',password:'NAHAGEMASA',role:'instructor',name:'המדריך הקורס'},
   {id:101,username:'manager',password:'bigboss2026',role:'manager',name:'מנהל ההדרכה'},
   {id:102,username:'elad',password:'elad2026',role:'instructor',name:'אלעד מורלי'},
   {id:103,username:'zohar',password:'zohar2026',role:'instructor',name:'זוהר פיסו'},
@@ -765,7 +769,27 @@ async function loadDataFromSupabase(){
     _syllabusCache = ls.syllabus || null;
     _courseMeta    = ls.courseMeta || null;
     const arr = ls.trainees;
-    if(Array.isArray(arr) && arr.length > 0) return migrateTraineeFields(arr);
+    if(Array.isArray(arr) && arr.length > 0){
+      migrateTraineeFields._dirty = false;
+      const migrated = migrateTraineeFields(arr);
+      if(migrateTraineeFields._dirty){
+        // fix users' username+password too
+        const users = getUsers();
+        let usersChanged = false;
+        migrated.forEach(t => {
+          if(!t.employeeId) return;
+          const u = users.find(u => u.traineeId === t.id);
+          if(u && (u.username === u.password || u.password === u.username+'123' || u.password === String(u.username))){
+            u.username = String(t.employeeId);
+            u.password = String(t.employeeId);
+            usersChanged = true;
+          }
+        });
+        if(usersChanged) saveUsers(users);
+        _lsSave(migrated, _syllabusCache, _courseMeta);
+      }
+      return migrated;
+    }
     return [];
   }
   // No local data at all — start completely fresh.
@@ -807,8 +831,43 @@ function saveData(arr){
   saveDataToSupabase(arr);
 }
 
+// Known trainees for current course — used to fix wrong employeeId after bad import
+const _KNOWN_TRAINEES = [
+  {empId:'797614', loc:'אשדוד', keys:['לנרמן','yaroslav','ירוסלב']},
+  {empId:'797615', loc:'אשדוד', keys:['אסולין']},
+  {empId:'797619', loc:'אשדוד', keys:['בן-משה','בנמשה']},
+  {empId:'797621', loc:'אשדוד', keys:['סילם']},
+  {empId:'797622', loc:'אשדוד', keys:['שרפי']},
+  {empId:'797623', loc:'אשדוד', keys:['בוטראשוילי']},
+  {empId:'797624', loc:'אשדוד', keys:['כהן עמית','כהן נסים']},
+  {empId:'797616', loc:'דימונה', keys:['שיש']},
+  {empId:'797617', loc:'דימונה', keys:['אזולאי']},
+  {empId:'795299', loc:'חיפה',   keys:['בק']},
+  {empId:'797618', loc:'חיפה',   keys:['בן עמי','בן-עמי']},
+  {empId:'797620', loc:'חיפה',   keys:['סוברנו']},
+];
+
+function _lookupTraineeEmpId(name){
+  const n = String(name||'').toLowerCase();
+  return _KNOWN_TRAINEES.find(e => e.keys.some(k => n.includes(k.toLowerCase()))) || null;
+}
+
 function migrateTraineeFields(arr){
-  return arr;
+  const BAD_EMP_VALUES = ['חטיבת מטענים',''];
+  let changed = false;
+  const result = arr.map(t => {
+    const empStr = String(t.employeeId||'').trim();
+    if(BAD_EMP_VALUES.includes(empStr) || !empStr){
+      const found = _lookupTraineeEmpId(t.name);
+      if(found){
+        changed = true;
+        return {...t, employeeId: found.empId, location: t.location || found.loc};
+      }
+    }
+    return t;
+  });
+  if(changed) migrateTraineeFields._dirty = true;
+  return result;
 }
 
 function updateTrainee(id, updates){
@@ -988,6 +1047,9 @@ async function initApp(){
   document.getElementById('hdr-user-info').className=`hdr-user role-${u.role}`;
   // nav
   const canSeeAll=u.role==='instructor'||u.role==='manager';
+  const isTrainee=u.role==='trainee';
+  document.getElementById('nav-dashboard').style.display=isTrainee?'none':'';
+  document.getElementById('nav-my-data').style.display=isTrainee?'':'none';
   document.getElementById('nav-trainees').style.display=canSeeAll?'':'none';
   document.getElementById('btn-add-trainee').style.display=canSeeAll?'':'none';
   document.getElementById('btn-new-course').style.display=canSeeAll?'':'none';
@@ -1004,7 +1066,8 @@ async function initApp(){
     nlEl.style.display='none';
     document.getElementById('trainee-nav-list').innerHTML='';
   }
-  navigate('dashboard');
+  if(isTrainee && u.traineeId) navigate('trainee', u.traineeId);
+  else navigate('dashboard');
 }
 
 function buildTraineeNavLinks(){
@@ -1269,6 +1332,11 @@ function renderTraineesRows(data){
 
 function renderTraineeDetail(id, edit){
   const t=getTrainee(id); if(!t) return;
+  // Trainees may only view their own data
+  if(currentUser.role==='trainee' && currentUser.traineeId !== id){
+    navigate('trainee', currentUser.traineeId);
+    return;
+  }
   const canEdit=currentUser.role==='instructor'||currentUser.role==='manager';
   const el=document.getElementById('trainee-detail-content');
   const w2=calcWeightedScore(t,1);
@@ -2775,7 +2843,7 @@ function previewTraineeImport(e){
       // Map columns flexibly — case-insensitive partial match
       const col = (opts) => headers.find(h => opts.some(o => h.toLowerCase().includes(o.toLowerCase()))) || null;
       const cName   = col(['שם','name']);
-      const cEmpId  = col(['מ. עובד','מספר עובד','emp id','emp_id','employeeid','עובד']);
+      const cEmpId  = col(['מספר עובד חילן','מ. עובד','מספר עובד','emp id','emp_id','employeeid']) || col(['עובד']);
       const cLoc    = col(['מתחם','location','עיר']);
       const cAge    = col(['גיל','age']);
       const cFamily = col(['משפחתי','family']);
