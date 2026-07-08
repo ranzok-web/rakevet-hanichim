@@ -3326,7 +3326,7 @@ function openGanttSync(){
       <div id="gantt-preview"></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="document.getElementById('gantt-modal').remove()">ביטול</button>
-        <button class="btn btn-primary" id="gantt-confirm-btn" onclick="confirmGanttSync()" style="display:none">✅ עדכן סילבוס</button>
+        <button class="btn btn-primary" id="gantt-confirm-btn" onclick="confirmGanttSync()" style="display:none">✅ סנכרן תאריכים</button>
       </div>
     </div>
   </div>`;
@@ -3471,27 +3471,11 @@ function parseGanttExcel(file){
         courseStart,
         totalDays: rows.length,
         vacDates,
-        topicOrder: rows.map(r=>r.topic),
         _excelRows: rows
       };
 
-      status.innerHTML = `<span style="color:var(--success)">✓ קובץ Excel נקרא — ${rows.length} ימי לימוד</span>`;
-      preview.innerHTML = `
-        <div class="card card-sm" style="margin-top:16px;background:var(--bg-input)">
-          <div class="grid2" style="gap:12px;margin-bottom:12px">
-            <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">תאריך פתיחה</div>
-              <div style="font-weight:700;color:var(--text)">${courseStart}</div></div>
-            <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">סה"כ ימים</div>
-              <div style="font-weight:700;color:var(--text)">${rows.length} ימים</div></div>
-          </div>
-          <div class="table-wrap" style="max-height:180px;overflow-y:auto"><table class="score-table">
-            <thead><tr><th>#</th><th>תאריך</th><th>נושא</th></tr></thead>
-            <tbody>${rows.slice(0,6).map((r,i)=>`<tr><td>${i+1}</td><td>${r.date}</td><td><strong>${r.topic}</strong></td></tr>`).join('')}
-            ${rows.length>6?`<tr><td colspan="3" style="text-align:center;color:var(--text3)">... ועוד ${rows.length-6} ימים</td></tr>`:''}</tbody>
-          </table></div>
-        </div>`;
-      confirmBtn.style.display = '';
-      confirmBtn.textContent = '✅ עדכן סילבוס';
+      // Use the shared preview (shows vacation-day checkboxes)
+      showGanttPreview(_ganttResult, status, preview, confirmBtn);
     } catch(err){
       status.innerHTML = `<span style="color:var(--danger)">שגיאה בקריאת הקובץ: ${err.message}</span>`;
       console.error(err);
@@ -3626,34 +3610,16 @@ function showGanttPreview(res, status, preview, confirmBtn){
 async function confirmGanttSync(){
   if(!_ganttResult){ showToast('לא נטען קובץ גאנט','warn'); return; }
 
-  // Excel path: rows already have correct dates — save directly as syllabus
-  if(_ganttResult._excelRows){
-    const newSyllabus = {
-      rows: _ganttResult._excelRows,
-      courseStart: _ganttResult.courseStart,
-      vacationDays: _ganttResult.vacDates || [],
-      uploadedAt: new Date().toISOString()
-    };
-    await saveSyllabus(newSyllabus);
-    document.getElementById('gantt-modal').remove();
-    const vacMsg = newSyllabus.vacationDays.length ? ` | ${newSyllabus.vacationDays.length} ימי חופש` : '';
-    showToast(`✓ הסילבוס עודכן מגאנט Excel — ${_ganttResult._excelRows.length} ימי לימוד${vacMsg}`, 'success');
-    _ganttResult = null;
-    renderSyllabus();
-    return;
-  }
-
-  // PDF path: recalculate dates from course start + selected vacation days
-  if(!_syllabusCache?.rows?.length){ showToast('אין סילבוס קיים לסנכרן','warn'); return; }
-  const {courseStart, topicOrder} = _ganttResult;
+  // Both Excel and PDF paths: keep existing syllabus topics, only update dates + vacation days
+  if(!_syllabusCache?.rows?.length){ showToast('⚠️ יש להעלות סילבוס לפני הגאנט','warn'); return; }
+  const courseStart = _ganttResult.courseStart;
   const selectedVac = [...document.querySelectorAll('[id^="vac-cb-"]')]
     .filter(cb=>cb.checked).map(cb=>cb.value);
-  const rows = [..._syllabusCache.rows];
-  const newRows = recalculateSyllabusDates(rows, courseStart, selectedVac);
+  const newRows = recalculateSyllabusDates([..._syllabusCache.rows], courseStart, selectedVac);
   const newSyllabus = {..._syllabusCache, rows:newRows, courseStart, vacationDays:selectedVac};
   await saveSyllabus(newSyllabus);
   document.getElementById('gantt-modal').remove();
-  showToast(`✓ הסילבוס סונכרן עם גאנט PDF — ${selectedVac.length} ימי חופש`, 'success');
+  showToast(`✓ תאריכי הסילבוס עודכנו — ${selectedVac.length} ימי חופש`, 'success');
   _ganttResult = null;
   renderSyllabus();
 }
