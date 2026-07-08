@@ -872,37 +872,19 @@ function _lsLoad(){
 }
 
 async function loadDataFromSupabase(){
-  // localStorage is always the primary source of truth — it holds the most recent save.
-  // Only fall back to Supabase when localStorage has no record at all.
+  // localStorage is the ONLY source of truth on load.
+  // Supabase is write-only (backup). We never read from it on startup
+  // because it may contain stale data from previous courses.
   const ls = _lsLoad();
   if(ls){
     _syllabusCache = ls.syllabus || null;
     _courseMeta    = ls.courseMeta || null;
     const arr = ls.trainees;
     if(Array.isArray(arr) && arr.length > 0) return migrateTraineeFields(arr);
-    if(Array.isArray(arr)) return [];
     return [];
   }
-
-  // No local data — read from Supabase (read-only: do NOT write back to LS to avoid contamination)
-  try {
-    const {data, error} = await _sb.from('trainees').select('data').eq('id',0).single();
-    if(!error && data?.data){
-      const d = data.data;
-      _syllabusCache = d.syllabus || null;
-      _courseMeta    = d.courseMeta || null;
-      const arr = d.trainees;
-      // Do NOT call _lsSave here — Supabase may have stale data from a previous course.
-      // LS will be written only when the user explicitly saves (saveAllToSupabase).
-      if(Array.isArray(arr) && arr.length > 0) return migrateTraineeFields(arr);
-      if(Array.isArray(arr)) return [];
-      return [];
-    }
-    throw new Error(error?.message||'no data');
-  } catch(e){
-    console.warn('Supabase load failed, no local data either:', e.message);
-    return [];
-  }
+  // No local data at all — start completely fresh.
+  return [];
 }
 
 async function saveAllToSupabase(traineesArr, syllabus, courseMeta){
@@ -1847,14 +1829,9 @@ function saveTrainee(id){
 // ============================================================
 
 async function clearLocalDataAndReload(){
-  if(!confirm('פעולה זו תאפס את כל הנתונים (מקומי + ענן) ותטען מחדש. להמשיך?')) return;
-  // Clear localStorage
+  if(!confirm('פעולה זו תאפס את כל הנתונים ותטען מחדש. להמשיך?')) return;
   localStorage.removeItem('ir_app_data');
   localStorage.removeItem('ir_users');
-  // Also overwrite Supabase with empty data so it can't restore old records
-  try {
-    await _sb.from('trainees').upsert({id:0, data:{trainees:[], syllabus:null, courseMeta:null, savedAt:Date.now()}});
-  } catch(e){ console.warn('Supabase clear failed (OK if offline):', e.message); }
   location.reload();
 }
 
