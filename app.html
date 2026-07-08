@@ -711,7 +711,8 @@ const DATA_VERSION = 'apr2026v3';
 // ── Supabase ──────────────────────────────────────────────
 const SUPABASE_URL = 'https://qvyzxqoatcpshgfzshxd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2eXp4cW9hdGNwc2hnZnpzaHhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NjQzNjksImV4cCI6MjA5NjE0MDM2OX0.Q1k-lBqafWscmW1-NW6uPcOhxh38jDXBmud6nMV66EE';
-const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let _sb = null;
+try { _sb = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY); } catch(e) { console.warn('Supabase unavailable, running in local-only mode'); }
 let _dataCache = null;
 let _syllabusCache = null; // {rows:[{date,topic,details}], uploadedAt}
 let _courseMeta = null;   // {name, cohort, startDate, endDate}
@@ -800,6 +801,7 @@ async function saveAllToSupabase(traineesArr, syllabus, courseMeta){
   if(courseMeta === undefined) courseMeta = _courseMeta;
   _lsSave(traineesArr, syllabus, courseMeta); // always save locally first
   try {
+    if(!_sb) return;
     const {error} = await _sb.from('trainees')
       .upsert({id:0, data:{trainees:traineesArr, syllabus, courseMeta}});
     if(error) throw new Error(error.message);
