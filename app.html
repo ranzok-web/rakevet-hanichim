@@ -872,6 +872,19 @@ function _lsLoad(){
 }
 
 async function loadDataFromSupabase(){
+  // localStorage is always the primary source of truth — it holds the most recent save.
+  // Only fall back to Supabase when localStorage has no record at all.
+  const ls = _lsLoad();
+  if(ls){
+    _syllabusCache = ls.syllabus || null;
+    _courseMeta    = ls.courseMeta || null;
+    const arr = ls.trainees;
+    if(Array.isArray(arr) && arr.length > 0) return migrateTraineeFields(arr);
+    if(Array.isArray(arr)) return [];
+    return [];
+  }
+
+  // No local data — try Supabase
   try {
     const {data, error} = await _sb.from('trainees').select('data').eq('id',0).single();
     if(!error && data?.data){
@@ -879,25 +892,15 @@ async function loadDataFromSupabase(){
       _syllabusCache = d.syllabus || null;
       _courseMeta    = d.courseMeta || null;
       const arr = d.trainees;
-      _lsSave(Array.isArray(arr)?arr:[], _syllabusCache, _courseMeta); // sync to LS
+      _lsSave(Array.isArray(arr)?arr:[], _syllabusCache, _courseMeta);
       if(Array.isArray(arr) && arr.length > 0) return migrateTraineeFields(arr);
       if(Array.isArray(arr)) return [];
       return [];
     }
     throw new Error(error?.message||'no data');
   } catch(e){
-    console.warn('Supabase load failed, using localStorage:', e.message);
-    const ls = _lsLoad();
-    if(ls){
-      _syllabusCache = ls.syllabus || null;
-      _courseMeta    = ls.courseMeta || null;
-      const arr = ls.trainees;
-      showToast('נטען ממצב שמור מקומי (Supabase לא זמין)','warn');
-      if(Array.isArray(arr) && arr.length > 0) return migrateTraineeFields(arr);
-      if(Array.isArray(arr)) return [];
-    } else {
-      showToast('שגיאת חיבור — בדוק אינטרנט','error');
-    }
+    console.warn('Supabase load failed, no local data either:', e.message);
+    showToast('שגיאת חיבור — בדוק אינטרנט','error');
     return [];
   }
 }
