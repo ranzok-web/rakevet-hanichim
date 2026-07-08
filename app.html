@@ -993,14 +993,8 @@ function refreshCurrentView(){
 }
 
 function startRealtime(){
-  _sb.channel('trainees-rt')
-    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'trainees'},payload=>{
-      const d = payload.new?.data;
-      if(d?.trainees){ _dataCache=d.trainees; }
-      if(d?.syllabus !== undefined){ _syllabusCache=d.syllabus; }
-      refreshCurrentView();
-    })
-    .subscribe();
+  // Realtime disabled — localStorage is the primary source of truth.
+  // Supabase realtime events were overwriting in-memory data with stale records.
 }
 
 // ============================================================
@@ -1851,6 +1845,13 @@ function saveTrainee(id){
 // ============================================================
 // NEW COURSE
 // ============================================================
+
+function clearLocalDataAndReload(){
+  if(!confirm('פעולה זו תמחק את כל הנתונים המקומיים ותטען מחדש. להמשיך?')) return;
+  localStorage.removeItem('ir_app_data');
+  localStorage.removeItem('ir_users');
+  location.reload();
+}
 
 function openNewCourseModal(){
   const data = getData();
@@ -2788,7 +2789,10 @@ function renderCourseMgmt(){
     <div class="card" style="border:1px solid rgba(220,53,69,.3)">
       <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">⚠️ פתיחת קורס חדש / איפוס</div>
       <div style="font-size:13px;color:var(--text2);margin-bottom:12px">מחיקת כל נתוני הקורס הנוכחי ופתיחת קורס חדש.</div>
-      <button class="btn btn-outline" style="border-color:#dc3545;color:#dc3545" onclick="openNewCourseModal()">🔄 פתח קורס חדש</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-outline" style="border-color:#dc3545;color:#dc3545" onclick="openNewCourseModal()">🔄 פתח קורס חדש</button>
+        <button class="btn btn-outline" style="border-color:#dc3545;color:#dc3545;font-size:12px" onclick="clearLocalDataAndReload()">🗑️ נקה נתונים מקומיים וטען מחדש</button>
+      </div>
     </div>`;
 }
 
