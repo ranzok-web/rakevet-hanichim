@@ -720,134 +720,14 @@ const _emptyScores = () => ({
 const _emptyPractical = () => ({jt42cw:['',''],gm:['',''],euro4000:['',''],signalsPractical:['','']});
 const _emptyTheory = () => ({signals:null,jt42:null,euro4000:null,gm:[],routine:null,emergency:null,choms:null});
 
-const INITIAL_TRAINEES = [
-  {
-    id:1, name:'איתמר פרץ', username:'itamar', employeeId:'797504',
-    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
-    age:26, familyStatus:'', location:'אשדוד', education:'בגרות מלאה',
-    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  },
-  {
-    id:2, name:'יאיר לוי', username:'yair', employeeId:'797503',
-    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
-    age:null, familyStatus:'', location:'אשדוד', education:'בגרות מלאה',
-    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  },
-  {
-    id:3, name:'משה שי אילוז', username:'shai', employeeId:'796313',
-    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
-    age:33, familyStatus:'נשוי +3', location:'אשדוד', education:'בגרות מלאה',
-    status:'בהמתנה', instructorEval:'היה פקח', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  },
-  {
-    id:4, name:'רז צרפתי', username:'raz', employeeId:'797511',
-    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
-    age:27, familyStatus:'', location:'אשדוד', education:'בגרות מלאה',
-    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  },
-  {
-    id:5, name:'רם יצחק מלול', username:'ram', employeeId:'797522',
-    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
-    age:24, familyStatus:'', location:'דימונה', education:'בגרות מלאה',
-    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  },
-  {
-    id:6, name:'יואל גל שטרית', username:'yoel', employeeId:'797516',
-    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
-    age:30, familyStatus:'', location:'דימונה', education:'בגרות מלאה',
-    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  },
-  {
-    id:7, name:'יעקב ילוז', username:'yaakov', employeeId:'797508',
-    course:'קורס נהג משא ישיר', cohort:'06/2025', plannedEnd:'',
-    age:44, familyStatus:'', location:'דימונה', education:'בגרות מלאה',
-    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  },
-  {
-    id:8, name:'איתי שלום חיון', username:'itai', employeeId:'797519',
-    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
-    age:null, familyStatus:'', location:'דימונה', education:'בגרות מלאה',
-    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  },
-  {
-    id:9, name:'אלי אליאב סויסה', username:'eli', employeeId:'797507',
-    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
-    age:22, familyStatus:'', location:'דימונה', education:'בגרות מלאה',
-    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  },
-  {
-    id:10, name:'רון אלי בנסבי', username:'ron', employeeId:'797505',
-    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
-    age:null, familyStatus:'רווק', location:'דימונה', education:'בגרות מלאה',
-    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  },
-  {
-    id:11, name:'שניר אלמלח', username:'shanir', employeeId:'797509',
-    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
-    age:30, familyStatus:'', location:'חיפה', education:'טכנאי תעשיה וניהול',
-    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  },
-  {
-    id:12, name:'יהודה מלול', username:'yehuda', employeeId:'797506',
-    course:'קורס נהג משא ישיר', cohort:'04/2026', plannedEnd:'',
-    age:null, familyStatus:'', location:'', education:'בגרות מלאה',
-    status:'בהמתנה', instructorEval:'', gaps:['','',''], recommendations:['','',''],
-    behavioralGap:'', rolefit:null,
-    theoryScores:_emptyTheory(), practicalTests:_emptyPractical(),
-    evalDates:['',''], scores:_emptyScores()
-  }
-];
+// Trainees are stored in localStorage only — no hardcoded trainee records.
+const INITIAL_TRAINEES = [];
 
 const USERS = [
   {id:100,username:'madrich',password:'train2025',role:'instructor',name:'המדריך הקורס'},
   {id:101,username:'manager',password:'bigboss2026',role:'manager',name:'מנהל ההדרכה'},
   {id:102,username:'elad',password:'elad2026',role:'instructor',name:'אלעד מורלי'},
   {id:103,username:'zohar',password:'zohar2026',role:'instructor',name:'זוהר פיסו'},
-  {id:1, username:'itamar', password:'itamar123',role:'trainee',traineeId:1, name:'איתמר פרץ'},
-  {id:2, username:'yair',   password:'yair123',  role:'trainee',traineeId:2, name:'יאיר לוי'},
-  {id:3, username:'shai',   password:'shai123',  role:'trainee',traineeId:3, name:'שי אילוז'},
-  {id:4, username:'raz',    password:'raz123',   role:'trainee',traineeId:4, name:'רז צרפתי'},
-  {id:5, username:'ram',    password:'ram123',   role:'trainee',traineeId:5, name:'רם מלול'},
-  {id:6, username:'yoel',   password:'yoel123',  role:'trainee',traineeId:6, name:'יואל שטרית'},
-  {id:7, username:'yaakov', password:'yaakov123',role:'trainee',traineeId:7, name:'יעקוב ילוז'},
-  {id:8, username:'itai',   password:'itai123',  role:'trainee',traineeId:8, name:'איתי שלום חיון'},
-  {id:9, username:'eli',    password:'eli123',   role:'trainee',traineeId:9, name:'אלי אליאב סוויסה'},
-  {id:10,username:'ron',    password:'ron123',   role:'trainee',traineeId:10,name:'רון אלי בנסבי'},
-  {id:11,username:'shanir', password:'shanir123',role:'trainee',traineeId:11,name:'שניר אלמלח'},
-  {id:12,username:'yehuda', password:'yehuda123',role:'trainee',traineeId:12,name:'יהודה מלול'}
 ];
 
 // ============================================================
@@ -863,12 +743,17 @@ let isDark = true;
 // ── Supabase data functions ───────────────────────────────
 
 const LS_KEY = 'ir_app_data';
+const LS_VERSION = 3; // bump when storage format changes; old data auto-discarded on load
 
 function _lsSave(traineesArr, syllabus, courseMeta){
-  try { localStorage.setItem(LS_KEY, JSON.stringify({trainees:traineesArr, syllabus, courseMeta, savedAt:Date.now()})); } catch(e){}
+  try { localStorage.setItem(LS_KEY, JSON.stringify({v:LS_VERSION, trainees:traineesArr, syllabus, courseMeta, savedAt:Date.now()})); } catch(e){}
 }
 function _lsLoad(){
-  try { return JSON.parse(localStorage.getItem(LS_KEY)||'null'); } catch(e){ return null; }
+  try {
+    const d = JSON.parse(localStorage.getItem(LS_KEY)||'null');
+    if(!d || d.v !== LS_VERSION) return null; // stale / old-format data → discard
+    return d;
+  } catch(e){ return null; }
 }
 
 async function loadDataFromSupabase(){
@@ -923,18 +808,7 @@ function saveData(arr){
 }
 
 function migrateTraineeFields(arr){
-  // Patch fields that exist in INITIAL_TRAINEES but missing from stored data
-  let changed = false;
-  const patched = arr.map(t => {
-    const base = INITIAL_TRAINEES.find(b => b.id === t.id);
-    if(!base) return t;
-    const upd = {...t};
-    if(!upd.employeeId && base.employeeId){ upd.employeeId = base.employeeId; changed = true; }
-    if(upd.name !== base.name && base.employeeId){ upd.name = base.name; changed = true; }
-    return upd;
-  });
-  if(changed) saveData(patched);
-  return patched;
+  return arr;
 }
 
 function updateTrainee(id, updates){
