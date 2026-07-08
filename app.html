@@ -3166,7 +3166,7 @@ function parseGanttHorizontal(wb){
       const dailyNote = (noteRaw && typeof noteRaw === 'string')
         ? noteRaw.trim().replace(/\s*\n\s*/g, ' ')
         : '';
-      const useNote = dailyNote.length >= 2 && dailyNote.length <= 30;
+      const useNote = dailyNote.length >= 2 && dailyNote.length <= 60;
 
       // Build topic (priority: specific phase > sub-label > daily note > loco > content)
       let topic;
