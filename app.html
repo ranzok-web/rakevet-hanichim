@@ -884,7 +884,7 @@ async function loadDataFromSupabase(){
     return [];
   }
 
-  // No local data — try Supabase
+  // No local data — read from Supabase (read-only: do NOT write back to LS to avoid contamination)
   try {
     const {data, error} = await _sb.from('trainees').select('data').eq('id',0).single();
     if(!error && data?.data){
@@ -892,7 +892,8 @@ async function loadDataFromSupabase(){
       _syllabusCache = d.syllabus || null;
       _courseMeta    = d.courseMeta || null;
       const arr = d.trainees;
-      _lsSave(Array.isArray(arr)?arr:[], _syllabusCache, _courseMeta);
+      // Do NOT call _lsSave here — Supabase may have stale data from a previous course.
+      // LS will be written only when the user explicitly saves (saveAllToSupabase).
       if(Array.isArray(arr) && arr.length > 0) return migrateTraineeFields(arr);
       if(Array.isArray(arr)) return [];
       return [];
@@ -900,7 +901,6 @@ async function loadDataFromSupabase(){
     throw new Error(error?.message||'no data');
   } catch(e){
     console.warn('Supabase load failed, no local data either:', e.message);
-    showToast('שגיאת חיבור — בדוק אינטרנט','error');
     return [];
   }
 }
@@ -1846,10 +1846,15 @@ function saveTrainee(id){
 // NEW COURSE
 // ============================================================
 
-function clearLocalDataAndReload(){
-  if(!confirm('פעולה זו תמחק את כל הנתונים המקומיים ותטען מחדש. להמשיך?')) return;
+async function clearLocalDataAndReload(){
+  if(!confirm('פעולה זו תאפס את כל הנתונים (מקומי + ענן) ותטען מחדש. להמשיך?')) return;
+  // Clear localStorage
   localStorage.removeItem('ir_app_data');
   localStorage.removeItem('ir_users');
+  // Also overwrite Supabase with empty data so it can't restore old records
+  try {
+    await _sb.from('trainees').upsert({id:0, data:{trainees:[], syllabus:null, courseMeta:null, savedAt:Date.now()}});
+  } catch(e){ console.warn('Supabase clear failed (OK if offline):', e.message); }
   location.reload();
 }
 
