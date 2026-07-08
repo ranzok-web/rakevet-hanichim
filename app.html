@@ -3300,12 +3300,22 @@ function parseGanttHorizontal(wb){
       locoSubjects.sort((a,b)=>b.hours-a.hours);
       contentSubjects.sort((a,b)=>b.hours-a.hours);
 
-      // Build topic (priority: specific phase > sub-label > loco > content)
+      // Read row 15 (r=14) daily note — short descriptive label written per day
+      // Long strings (>30 chars) or strings with newlines are instructor notes, skip them
+      const noteRaw = ws[XLSX.utils.encode_cell({r:14, c})]?.v;
+      const dailyNote = (noteRaw && typeof noteRaw === 'string')
+        ? noteRaw.trim().replace(/\s*\n\s*/g, ' ')
+        : '';
+      const useNote = dailyNote.length >= 2 && dailyNote.length <= 30;
+
+      // Build topic (priority: specific phase > sub-label > daily note > loco > content)
       let topic;
       if(phase && !FULL_DAY_LABELS.has(phase)){
         topic = sub ? `${phase} - ${sub}` : phase;
       } else if(sub && !FULL_DAY_LABELS.has(sub)){
         topic = sub;
+      } else if(useNote){
+        topic = dailyNote;
       } else if(locoSubjects.length > 0){
         topic = locoSubjects.slice(0,2).map(s=>s.name).join(' + ');
       } else if(contentSubjects.length > 0){
