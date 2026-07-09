@@ -803,28 +803,32 @@ async function loadDataFromSupabase(){
     _lsSave(source.trainees||[], source.syllabus||null, source.courseMeta||null, source.savedAt);
   }
   if(source){
-    _syllabusCache = ls.syllabus || null;
-    _courseMeta    = ls.courseMeta || null;
-    const arr = ls.trainees;
+    _syllabusCache = source.syllabus || null;
+    _courseMeta    = source.courseMeta || null;
+    const arr = source.trainees;
     if(Array.isArray(arr) && arr.length > 0){
       migrateTraineeFields._dirty = false;
       const migrated = migrateTraineeFields(arr);
       if(migrateTraineeFields._dirty){
-        // fix users' username+password too
-        const users = getUsers();
-        let usersChanged = false;
-        migrated.forEach(t => {
-          if(!t.employeeId) return;
-          const u = users.find(u => u.traineeId === t.id);
-          if(u && (u.username === u.password || u.password === u.username+'123' || u.password === String(u.username))){
-            u.username = String(t.employeeId);
-            u.password = String(t.employeeId);
-            usersChanged = true;
-          }
-        });
-        if(usersChanged) saveUsers(users);
         _lsSave(migrated, _syllabusCache, _courseMeta);
       }
+      // Always ensure every trainee has a user record in ir_users (cross-device fix)
+      const stored = JSON.parse(localStorage.getItem('ir_users')||'[]');
+      let usersChanged = false;
+      migrated.forEach(t => {
+        if(!t.employeeId) return;
+        const empId = String(t.employeeId);
+        const exists = stored.find(u => u.role==='trainee' && u.traineeId===t.id);
+        if(!exists){
+          stored.push({id:t.id, username:empId, password:empId, role:'trainee', traineeId:t.id, name:t.name});
+          usersChanged = true;
+        } else if(exists.username !== empId){
+          exists.username = empId;
+          exists.password = empId;
+          usersChanged = true;
+        }
+      });
+      if(usersChanged) localStorage.setItem('ir_users', JSON.stringify(stored));
       return migrated;
     }
     return [];
