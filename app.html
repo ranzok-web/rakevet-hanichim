@@ -489,7 +489,7 @@ footer{grid-area:foot;background:var(--hdr);border-top:3px solid var(--accent);
 <div id="app" class="hidden">
 
 <header>
-  <div class="hdr-logo" onclick="navigate('dashboard')" style="cursor:pointer" title="חזור ללוח בקרה">
+  <div class="hdr-logo" onclick="currentUser&&currentUser.role==='trainee'?navigate('trainee',currentUser.traineeId):navigate('dashboard')" style="cursor:pointer" title="חזור ללוח בקרה">
     <div class="logo-badge">
       <svg viewBox="0 0 28 28" fill="none"><rect x="2" y="10" width="24" height="3" rx="1.5" fill="#fff"/><rect x="2" y="15" width="24" height="3" rx="1.5" fill="#fff"/><rect x="9" y="7" width="3" height="14" rx="1.5" fill="#fff"/><rect x="16" y="7" width="3" height="14" rx="1.5" fill="#fff"/></svg>
       <div class="logo-names"><div class="l1">רכבת ישראל</div><div class="l2">חטיבת מטענים</div></div>
