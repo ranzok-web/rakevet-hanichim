@@ -1632,7 +1632,7 @@ function renderTraineeDashboard(t){
           <div style="font-size:13px;color:var(--text2)">📍 מתחם: <strong style="color:var(--text)">${t.location||'—'}</strong></div>
           <div style="font-size:13px;color:var(--text2)">📅 תחילת קורס: <strong style="color:var(--text)">${(()=>{const p=_getCourseProgress();return p.startDate!=='—'?p.startDate:(t.startDate||'—');})()}</strong></div>
           <div style="font-size:13px;color:var(--text2)">🏁 סיום מתוכנן: <strong style="color:var(--text)">${(()=>{const p=_getCourseProgress();return p.endDate!=='—'?p.endDate:(t.plannedEnd||'—');})()}</strong></div>
-          <div style="margin-top:4px"><span class="badge ${statusBadge(t.status)}" style="font-size:13px;padding:4px 12px">${t.status||'בהמתנה'}</span></div>
+          ${t.status?`<div style="margin-top:4px"><span class="badge ${statusBadge(t.status)}" style="font-size:13px;padding:4px 12px">${t.status}</span></div>`:''}
         </div>
       </div>
       <div class="td-score-hero">
