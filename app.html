@@ -3413,10 +3413,17 @@ async function confirmTraineeImport(){
   let maxId = Math.max(...existingData.map(t=>t.id), 0);
   const newTrainees = [];
   const newUsers = [...users];
+  let skipped = 0;
 
   _pendingTraineeImport.forEach(p => {
+    // Skip if trainee with same employeeId or name already exists
+    const empId = String(p.employeeId||'').trim();
+    const alreadyExists = existingData.find(t =>
+      (empId && String(t.employeeId||'').trim() === empId) || t.name === p.name
+    );
+    if(alreadyExists){ skipped++; return; }
+
     let uname = p.username;
-    // Ensure unique username
     while(newUsers.find(u=>u.username===uname))
       uname = uname + '_' + Math.random().toString(36).slice(2,4);
     maxId++;
@@ -3428,7 +3435,7 @@ async function confirmTraineeImport(){
       cohort: cm.cohort||'', plannedEnd: cm.endDate||'',
       age: p.age, location: p.location,
       familyStatus: p.familyStatus, education: p.education,
-      status:'בהמתנה', instructorEval:'',
+      status:'בהכשרה', instructorEval:'',
       gaps:['','',''], recommendations:['','',''],
       behavioralGap:'', rolefit:null,
       theoryScores: _emptyTheory(), practicalTests: _emptyPractical(),
@@ -3438,7 +3445,13 @@ async function confirmTraineeImport(){
     newUsers.push({id:maxId, username:uname, password:p.employeeId||uname, role:'trainee', traineeId:maxId, name:p.name});
   });
 
-  // Single batch save
+  if(!newTrainees.length){
+    showToast(`כל ${skipped} החניכים כבר קיימים ברשימה`, 'warn');
+    _pendingTraineeImport = [];
+    document.getElementById('trainee-import-preview').innerHTML = '';
+    return;
+  }
+
   const allTrainees = [...existingData, ...newTrainees];
   _dataCache = allTrainees;
   saveUsers(newUsers);
@@ -3447,7 +3460,8 @@ async function confirmTraineeImport(){
   _pendingTraineeImport = [];
   buildTraineeNavLinks();
   renderCourseMgmt();
-  showToast(`✓ יובאו ${newTrainees.length} חניכים בהצלחה`, 'success');
+  const msg = skipped > 0 ? `✓ יובאו ${newTrainees.length} חניכים (${skipped} כבר קיימים — דולגו)` : `✓ יובאו ${newTrainees.length} חניכים בהצלחה`;
+  showToast(msg, 'success');
 }
 
 function renderSyllabus(){
