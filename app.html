@@ -1084,8 +1084,9 @@ async function initApp(){
   document.getElementById('nav-dashboard').style.display=isTrainee?'none':'';
   document.getElementById('nav-my-data').style.display=isTrainee?'':'none';
   document.getElementById('nav-trainees').style.display=canSeeAll?'':'none';
-  document.getElementById('btn-add-trainee').style.display=canSeeAll?'':'none';
-  document.getElementById('btn-new-course').style.display=canSeeAll?'':'none';
+  const isManager=u.role==='manager';
+  document.getElementById('btn-add-trainee').style.display=(canSeeAll&&!isManager)?'':'none';
+  document.getElementById('btn-new-course').style.display=(canSeeAll&&!isManager)?'':'none';
   document.getElementById('nav-course-mgmt').style.display=canSeeAll?'':'none';
   document.getElementById('btn-export-all').style.display=canSeeAll?'':'none';
   document.getElementById('btn-import').style.display=canSeeAll?'':'none';
@@ -1372,7 +1373,7 @@ function renderTraineeDetail(id, edit){
   }
   if(currentUser.role==='trainee'){ renderTraineeDashboard(t); return; }
 
-  const canEdit=currentUser.role==='instructor'||currentUser.role==='manager';
+  const canEdit=currentUser.role==='instructor';
   const el=document.getElementById('trainee-detail-content');
   const w2=calcWeightedScore(t,1);
 
@@ -1717,6 +1718,30 @@ function renderTabInfo(t, edit, canEdit){
       <div class="field-val" style="min-width:120px">${t.username}</div>
       ${canEdit?`<button class="btn btn-outline btn-sm" onclick="openResetPassword(${t.id})">🔑 איפוס סיסמה</button>`:''}
     </div>
+    ${(()=>{
+      const ex=t.traineeExpectations||{};
+      const hasAny=ex.courseText||ex.instructorsText||ex.selfText;
+      const emptyMsg=`<div class="divider"></div>
+    <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px">✍️ ציפיות החניך</div>
+    <div style="font-size:12px;color:var(--text3);font-style:italic">החניך טרם מילא ציפיות</div>`;
+      if(!hasAny) return emptyMsg;
+      return `<div class="divider"></div>
+    <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:12px">✍️ ציפיות החניך</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">מהקורס</div>
+        <div class="field-val multiline ${!ex.courseText?'empty':''}">${ex.courseText||'—'}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">מהמדריכים</div>
+        <div class="field-val multiline ${!ex.instructorsText?'empty':''}">${ex.instructorsText||'—'}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">מעצמי</div>
+        <div class="field-val multiline ${!ex.selfText?'empty':''}">${ex.selfText||'—'}</div>
+      </div>
+    </div>`;
+    })()}
   </div>`;
 }
 
