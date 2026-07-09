@@ -1017,13 +1017,46 @@ function theoryAvg(t){
 async function doLogin(){
   const u=document.getElementById('inp-user').value.trim();
   const p=document.getElementById('inp-pass').value;
-  const users=getUsers();
-  const user=users.find(x=>x.username===u&&x.password===p);
-  if(!user){ document.getElementById('login-err').textContent='שם משתמש או סיסמה שגויים'; return; }
-  // Show loading on button
+  const errEl=document.getElementById('login-err');
   const btn=document.querySelector('.login-btn');
-  btn.textContent='מתחבר...'; btn.disabled=true;
-  document.getElementById('login-err').textContent='';
+
+  btn.textContent='מתחבר...'; btn.disabled=true; errEl.textContent='';
+
+  // Ensure data is loaded (in case boot pre-load failed)
+  if(!_dataCache || _dataCache.length===0){
+    _dataCache = await loadDataFromSupabase();
+  }
+
+  // Check standard users (instructors/manager from USERS constant + ir_users)
+  let user = getUsers().find(x=>x.username===u && x.password===p);
+
+  // Fallback: match directly against trainee data by employeeId
+  if(!user && _dataCache && _dataCache.length>0){
+    const trainee = _dataCache.find(t => t.employeeId && String(t.employeeId)===u);
+    if(trainee){
+      // username = employeeId, password must also equal employeeId
+      if(p === u){
+        user = {id:trainee.id, username:u, password:u, role:'trainee', traineeId:trainee.id, name:trainee.name};
+        // Persist to ir_users so next login is instant
+        const stored = JSON.parse(localStorage.getItem('ir_users')||'[]');
+        if(!stored.find(x=>x.traineeId===trainee.id)){
+          stored.push(user);
+          localStorage.setItem('ir_users', JSON.stringify(stored));
+        }
+      }
+    }
+  }
+
+  if(!user){
+    const count = (_dataCache||[]).length;
+    errEl.textContent = count===0
+      ? 'שגיאה: לא נטענו נתונים מהשרת. נסה לרענן את הדף'
+      : 'שם משתמש או סיסמה שגויים';
+    btn.textContent='כניסה למערכת'; btn.disabled=false;
+    return;
+  }
+
+  errEl.textContent='';
   currentUser=user;
   localStorage.setItem('ir_session',JSON.stringify({id:user.id,username:user.username}));
   await initApp();
