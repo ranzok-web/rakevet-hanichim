@@ -1339,6 +1339,8 @@ function renderTraineeDetail(id, edit){
     navigate('trainee', currentUser.traineeId);
     return;
   }
+  if(currentUser.role==='trainee'){ renderTraineeDashboard(t); return; }
+
   const canEdit=currentUser.role==='instructor'||currentUser.role==='manager';
   const el=document.getElementById('trainee-detail-content');
   const w2=calcWeightedScore(t,1);
@@ -1389,6 +1391,235 @@ function renderTraineeDetail(id, edit){
     <div id="tab-practical" class="tab-content">${renderTabPractical(t, edit, canEdit)}</div>
     <div id="tab-scores" class="tab-content">${renderTabScores(t, edit, canEdit)}</div>
   `;
+}
+
+// ============================================================
+// TRAINEE PERSONAL DASHBOARD
+// ============================================================
+
+function saveTraineeOwnPhoto(traineeId){
+  if(currentUser.role!=='trainee'||currentUser.traineeId!==traineeId) return;
+  const input=document.getElementById('my-photo-input');
+  const file=input?.files?.[0]; if(!file) return;
+  if(file.size>5*1024*1024){ showToast('התמונה גדולה מדי (מקסימום 5MB)','error'); return; }
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    updateTrainee(traineeId,{photo:ev.target.result});
+    showToast('התמונה נשמרה','success');
+    renderTraineeDetail(traineeId,false);
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderTraineeDashboard(t){
+  const el=document.getElementById('trainee-detail-content');
+  const id=t.id;
+  const w1=calcWeightedScore(t,0); const w2=calcWeightedScore(t,1);
+  const m2=calcCatAvg(t.scores.motivation,1);
+  const p2=calcCatAvg(t.scores.professionalism,1);
+  const d2=calcCatAvg(t.scores.discipline,1);
+  const trend=w2-w1; const trendUp=w2>=w1;
+
+  // ── theory helpers ──────────────────────────────────────────
+  const s=t.theoryScores||{};
+  const gmVals=Array.isArray(s.gm)?s.gm:[s.gm];
+  const theoryFields=[
+    {key:'signals',label:'סימנורים',pass:100,val:s.signals},
+    {key:'jt42',label:'JT',pass:80,val:s.jt42},
+    {key:'euro4000',label:'EURO 4000',pass:80,val:s.euro4000},
+    {key:'gm',label:'GM',pass:80,val:gmVals[0]},
+    {key:'gm2',label:'GM (חוזר)',pass:80,val:gmVals[1],retry:true},
+    {key:'routine',label:'נהלים בשגרה',pass:80,val:s.routine},
+    {key:'emergency',label:'נהלים בחירום',pass:80,val:s.emergency},
+    {key:'choms',label:'חומ"ס',pass:80,val:s.choms},
+  ].filter(f=>!f.retry||(f.retry&&gmVals[0]!=null&&gmVals[0]!==''&&+gmVals[0]<80));
+
+  function tCell(v,pass){
+    if(v==null||v==='') return `<td style="text-align:center;color:var(--text3)">—</td><td><span class="badge badge-gray" style="font-size:11px">טרם נבחן</span></td>`;
+    const ok=+v>=pass;
+    return `<td style="text-align:center"><span class="td-score ${ok?'score-hi':'score-lo'}" style="font-size:15px;font-weight:800">${v}</span></td>
+            <td><span class="badge ${ok?'badge-success':'badge-danger'}" style="font-size:11px">${ok?'עבר':'לא עבר'}</span></td>`;
+  }
+
+  const theoryRows=theoryFields.map(f=>`<tr>
+    <td style="font-weight:600;font-size:13px">${f.label} <span style="color:var(--text3);font-size:11px">(${f.pass})</span></td>
+    ${tCell(f.val,f.pass)}
+  </tr>`).join('');
+
+  // ── practical helpers ────────────────────────────────────────
+  const pt=t.practicalTests||{};
+  const practicalTests=[
+    {key:'jt42cw',label:'JT42CW'},
+    {key:'gm',label:'GM מעשי'},
+    {key:'euro4000',label:'יורו 4000 מעשי'},
+    {key:'signalsPractical',label:'סימנורים מעשי'},
+  ];
+  function attBadge(v){ if(!v)return`<span class="badge badge-gray" style="font-size:11px">—</span>`;
+    return`<span class="badge ${v==='עבר'?'badge-success':'badge-danger'}" style="font-size:11px">${v}</span>`; }
+
+  const practRows=practicalTests.map(test=>{
+    const vals=pt[test.key]||['',''];
+    return`<tr>
+      <td style="font-weight:600;font-size:13px">${test.label}</td>
+      <td style="text-align:center">${attBadge(vals[0])}</td>
+      <td style="text-align:center">${attBadge(vals[1])}</td>
+    </tr>`;
+  }).join('');
+
+  // ── quantitative scores ──────────────────────────────────────
+  const cats=SCORE_TEMPLATE.categories;
+  const d1=t.evalDates[0]||'הערכה 1'; const d2lbl=t.evalDates[1]||'הערכה 2';
+  const catScores={motivation:t.scores.motivation||[],professionalism:t.scores.professionalism||[],discipline:t.scores.discipline||[]};
+
+  let scoreHtml='';
+  cats.forEach(cat=>{
+    const scoresArr=catScores[cat.key]||[];
+    const avg1=calcCatAvg(scoresArr,0); const avg2=calcCatAvg(scoresArr,1);
+    scoreHtml+=`<div style="margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:14px;font-weight:700;color:var(--text)">${cat.name} <span style="font-size:12px;color:var(--text3)">(${Math.round(cat.weight*100)}%)</span></span>
+        <div style="display:flex;gap:10px;align-items:center">
+          <span style="font-size:11px;color:var(--text2)">${d1}: <strong class="score-chip ${scoreChipClass(avg1||0)}" style="padding:2px 8px">${avg1>0?fmt(avg1):'—'}</strong></span>
+          <span style="font-size:11px;color:var(--text2)">${d2lbl}: <strong class="score-chip ${scoreChipClass(avg2||0)}" style="padding:2px 8px">${avg2>0?fmt(avg2):'—'}</strong></span>
+        </div>
+      </div>`;
+    let gi=0;
+    cat.groups.forEach(grp=>{
+      scoreHtml+=`<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:6px 0 4px;padding-right:8px">${grp.name}</div>`;
+      grp.items.forEach(item=>{
+        const sc=scoresArr[gi]||[null,null];
+        const s1=sc[0]; const s2=sc[1];
+        const pct=s2!=null&&s2!==''?((+s2-5)/5*100):0;
+        scoreHtml+=`<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px">
+          <span style="flex:1;font-size:12px;color:var(--text2)">${item}</span>
+          <span class="score-chip ${scoreChipClass(s1||0)}" style="font-size:11px;min-width:28px;text-align:center">${s1!=null&&s1!==''?s1:'—'}</span>
+          <span class="score-chip ${scoreChipClass(s2||0)}" style="font-size:11px;min-width:28px;text-align:center">${s2!=null&&s2!==''?s2:'—'}</span>
+        </div>`;
+        gi++;
+      });
+    });
+    scoreHtml+='</div>';
+  });
+
+  // ── gaps & recs ──────────────────────────────────────────────
+  const gaps=(t.gaps||[]).filter(g=>g);
+  const recs=(t.recommendations||[]).filter(r=>r);
+  const gapsHtml=gaps.length?gaps.map((g,i)=>`<div style="padding:10px 14px;background:rgba(227,30,36,.08);border-right:3px solid var(--danger);border-radius:6px;margin-bottom:8px;font-size:13px;color:var(--text)">${g}</div>`).join('')
+    :`<div style="color:var(--text3);font-size:13px;font-style:italic">לא זוהו פערים</div>`;
+  const recsHtml=recs.length?recs.map(r=>`<div style="padding:10px 14px;background:rgba(46,204,113,.08);border-right:3px solid var(--success);border-radius:6px;margin-bottom:8px;font-size:13px;color:var(--text)">${r}</div>`).join('')
+    :`<div style="color:var(--text3);font-size:13px;font-style:italic">אין המלצות עדיין</div>`;
+  const behavGap=t.behavioralGap||'';
+
+  el.innerHTML=`
+  <style>
+  .td-dash{display:flex;flex-direction:column;gap:16px}
+  .td-hero{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+  .td-photo-area{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0}
+  .td-photo-img{width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid var(--primary-light)}
+  .td-photo-avatar{width:90px;height:90px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:900;color:#fff}
+  .td-photo-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+  .td-info-main{flex:1;min-width:200px}
+  .td-score-hero{display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg-input);border:1px solid var(--border);border-radius:12px;padding:14px 20px;min-width:120px;text-align:center;flex-shrink:0}
+  .td-2col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:600px){.td-2col{grid-template-columns:1fr}.td-hero{flex-direction:column}.td-score-hero{flex-direction:row;justify-content:flex-start;gap:16px;min-width:auto}}
+  </style>
+  <div class="td-dash">
+
+    <!-- HERO: Photo + Info + Score -->
+    <div class="card td-hero">
+      <div class="td-photo-area">
+        ${t.photo
+          ?`<img src="${t.photo}" class="td-photo-img" alt="">`
+          :`<div class="td-photo-avatar">${t.name.charAt(0)}</div>`}
+        <div class="td-photo-btns">
+          <label class="btn btn-outline btn-sm" style="cursor:pointer;font-size:11px" title="העלה מגלריה">
+            🖼️ גלריה
+            <input type="file" id="my-photo-input" accept="image/*" style="display:none" onchange="saveTraineeOwnPhoto(${id})">
+          </label>
+          <label class="btn btn-outline btn-sm" style="cursor:pointer;font-size:11px" title="צלם תמונה">
+            📷 מצלמה
+            <input type="file" accept="image/*" capture="user" style="display:none" onchange="(function(f){if(!f)return;if(f.size>5*1024*1024){showToast('התמונה גדולה מדי','error');return;}const r=new FileReader();r.onload=ev=>{updateTrainee(${id},{photo:ev.target.result});showToast('התמונה נשמרה','success');renderTraineeDetail(${id},false);};r.readAsDataURL(f);})(this.files[0])">
+          </label>
+        </div>
+      </div>
+      <div class="td-info-main">
+        <h2 style="font-size:22px;font-weight:900;margin-bottom:8px">${t.name}</h2>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div style="font-size:13px;color:var(--text2)">🪪 מספר עובד: <strong style="color:var(--text)">${t.employeeId||'—'}</strong></div>
+          <div style="font-size:13px;color:var(--text2)">📍 מתחם: <strong style="color:var(--text)">${t.location||'—'}</strong></div>
+          <div style="font-size:13px;color:var(--text2)">📅 התחלת קורס: <strong style="color:var(--text)">${t.scores?.motivation?.[0]?t.evalDates?.[0]||'—':'—'}</strong></div>
+          <div style="font-size:13px;color:var(--text2)">🏁 סיום מתוכנן: <strong style="color:var(--text)">${t.plannedEnd||'—'}</strong></div>
+          <div style="margin-top:4px"><span class="badge ${statusBadge(t.status)}" style="font-size:13px;padding:4px 12px">${t.status||'בהמתנה'}</span></div>
+        </div>
+      </div>
+      <div class="td-score-hero">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">ציון משוכלל</div>
+        <div style="font-size:38px;font-weight:900;color:var(--primary-light);line-height:1">${fmt(w2)}</div>
+        <div style="font-size:12px;font-weight:700;color:${trendUp?'var(--success)':'var(--danger)'};margin-top:6px">${trendUp?'▲':'▼'} ${Math.abs(trend).toFixed(1)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">מהערכה קודמת</div>
+      </div>
+    </div>
+
+    <!-- EXAMS ROW -->
+    <div class="td-2col">
+      <!-- THEORY -->
+      <div class="card">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:14px">📝 מבחנים עיוניים</div>
+        <div class="table-wrap"><table class="score-table">
+          <thead><tr><th>מבחן</th><th style="text-align:center">ציון</th><th>מצב</th></tr></thead>
+          <tbody>${theoryRows}</tbody>
+        </table></div>
+        <div style="margin-top:12px;padding:10px 14px;background:var(--bg-input);border-radius:var(--r2);display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;color:var(--text2)">ממוצע עיוני</span>
+          <span style="font-size:18px;font-weight:800;color:var(--primary-light)">${fmt(theoryAvg(t))}</span>
+        </div>
+      </div>
+      <!-- PRACTICAL -->
+      <div class="card">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:14px">🚂 מבחנים מעשיים</div>
+        <div class="table-wrap"><table class="score-table">
+          <thead><tr><th>מבחן</th><th style="text-align:center">ניסיון 1</th><th style="text-align:center">ניסיון 2</th></tr></thead>
+          <tbody>${practRows}</tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- QUANTITATIVE SCORES -->
+    <div class="card">
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">📊 הערכה כמותית</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:16px">סולם 5–10 | עמודה ראשונה = ${d1}, שנייה = ${d2lbl}</div>
+      ${scoreHtml}
+      <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <span style="font-size:13px;font-weight:700;color:var(--text)">ציון משוכלל סופי <span style="font-size:11px;color:var(--text3)">(מוטיבציה 40% + מקצועיות 55% + משמעת 5%)</span></span>
+        <div style="display:flex;gap:12px">
+          <span style="font-size:13px;color:var(--text2)">${d1}: <strong style="color:var(--text);font-size:16px">${fmt(w1)}</strong></span>
+          <span style="font-size:13px;color:var(--text2)">${d2lbl}: <strong style="color:var(--primary-light);font-size:20px">${fmt(w2)}</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVAL + GAPS ROW -->
+    <div class="td-2col">
+      <!-- INSTRUCTOR EVAL -->
+      <div class="card">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:14px">💬 חוות דעת המדריך</div>
+        <div class="field-val multiline ${!t.instructorEval?'empty':''}" style="font-size:14px;line-height:1.6">${t.instructorEval||'לא הוזנה עדיין'}</div>
+        ${t.rolefit!=null?`<div style="margin-top:14px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:13px;color:var(--text2)">התאמה לתפקיד:</span>
+          <span class="score-chip ${scoreChipClass(t.rolefit)}" style="font-size:16px;padding:4px 14px">${t.rolefit}</span>
+        </div>`:''}
+      </div>
+      <!-- GAPS & RECS -->
+      <div class="card">
+        <div style="font-size:15px;font-weight:700;color:var(--danger);margin-bottom:10px">⚠️ פערים שזוהו</div>
+        ${gapsHtml}
+        ${behavGap?`<div style="padding:10px 14px;background:rgba(255,193,7,.1);border-right:3px solid var(--warn);border-radius:6px;margin-bottom:8px;font-size:13px;color:var(--text)">${behavGap}</div>`:''}
+        <div style="font-size:15px;font-weight:700;color:var(--success);margin:14px 0 10px">💡 המלצות לשיפור</div>
+        ${recsHtml}
+      </div>
+    </div>
+
+  </div>`;
 }
 
 function switchTab(id){
