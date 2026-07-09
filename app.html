@@ -743,7 +743,7 @@ let currentUser = null;
 let currentView = 'dashboard';
 let currentTraineeId = null;
 let isEditMode = false;
-let isDark = true;
+let isDark = false;
 
 // ── Supabase data functions ───────────────────────────────
 
@@ -1040,9 +1040,14 @@ async function initApp(){
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   const u=currentUser;
-  // header
-  document.getElementById('hdr-avatar').textContent=u.name.charAt(0);
-  document.getElementById('hdr-uname').textContent=u.name;
+  // header — for trainees use actual trainee record name (user record may have stale name)
+  let displayName = u.name;
+  if(u.role==='trainee' && u.traineeId){
+    const tr=getTrainee(u.traineeId);
+    if(tr && tr.name) displayName=tr.name;
+  }
+  document.getElementById('hdr-avatar').textContent=displayName.charAt(0);
+  document.getElementById('hdr-uname').textContent=displayName;
   const rb=document.getElementById('hdr-role');
   const roleMap={instructor:'מדריך',manager:'מנהל',trainee:'חניך'};
   rb.textContent=roleMap[u.role]||u.role;
@@ -1536,8 +1541,8 @@ function renderTraineeDashboard(t){
         <div style="display:flex;flex-direction:column;gap:5px">
           <div style="font-size:13px;color:var(--text2)">🪪 מספר עובד: <strong style="color:var(--text)">${t.employeeId||'—'}</strong></div>
           <div style="font-size:13px;color:var(--text2)">📍 מתחם: <strong style="color:var(--text)">${t.location||'—'}</strong></div>
-          <div style="font-size:13px;color:var(--text2)">📅 תחילת קורס: <strong style="color:var(--text)">${t.evalDates?.[0]||'—'}</strong></div>
-          <div style="font-size:13px;color:var(--text2)">🏁 סיום מתוכנן: <strong style="color:var(--text)">${t.plannedEnd||'—'}</strong></div>
+          <div style="font-size:13px;color:var(--text2)">📅 תחילת קורס: <strong style="color:var(--text)">${(()=>{const p=_getCourseProgress();return p.startDate!=='—'?p.startDate:(t.startDate||'—');})()}</strong></div>
+          <div style="font-size:13px;color:var(--text2)">🏁 סיום מתוכנן: <strong style="color:var(--text)">${(()=>{const p=_getCourseProgress();return p.endDate!=='—'?p.endDate:(t.plannedEnd||'—');})()}</strong></div>
           <div style="margin-top:4px"><span class="badge ${statusBadge(t.status)}" style="font-size:13px;padding:4px 12px">${t.status||'בהמתנה'}</span></div>
         </div>
       </div>
@@ -4334,7 +4339,8 @@ async function confirmImport(){
 
 (async function init(){
   const savedTheme=localStorage.getItem('ir_theme');
-  if(savedTheme==='light'){ isDark=false; document.documentElement.setAttribute('data-theme','light'); }
+  if(savedTheme==='dark'){ isDark=true; document.documentElement.setAttribute('data-theme','dark'); }
+  else { isDark=false; document.documentElement.removeAttribute('data-theme'); }
   const session=localStorage.getItem('ir_session');
   if(session){
     try{
