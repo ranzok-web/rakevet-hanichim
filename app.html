@@ -797,10 +797,23 @@ async function loadDataFromSupabase(){
   const ls = _lsLoad();
   // Use whichever is newer (by savedAt timestamp)
   let source = null;
-  if(remote && ls) source = (remote.savedAt||0) >= (ls.savedAt||0) ? remote : ls;
-  else source = remote || ls;
+  // Never use remote if it has no trainees but local does
+  if(remote && ls){
+    const remoteHasData = (remote.trainees||[]).length > 0;
+    const lsHasData = (ls.trainees||[]).length > 0;
+    if(!remoteHasData && lsHasData) source = ls;
+    else source = (remote.savedAt||0) >= (ls.savedAt||0) ? remote : ls;
+  } else source = remote || ls;
   if(source){
-    _lsSave(source.trainees||[], source.syllabus||null, source.courseMeta||null, source.savedAt);
+    // Merge photos from localStorage (photos are not stored in Supabase to save space)
+    let mergedTrainees = source.trainees||[];
+    if(source===remote && ls && ls.trainees){
+      const lsPhotos={};
+      (ls.trainees||[]).forEach(t=>{ if(t.photo) lsPhotos[t.id]=t.photo; });
+      mergedTrainees = mergedTrainees.map(t=>lsPhotos[t.id]?{...t,photo:lsPhotos[t.id]}:t);
+    }
+    _lsSave(mergedTrainees, source.syllabus||null, source.courseMeta||null, source.savedAt);
+    source = {...source, trainees: mergedTrainees};
   }
   if(source){
     _syllabusCache = source.syllabus || null;
@@ -843,8 +856,10 @@ async function saveAllToSupabase(traineesArr, syllabus, courseMeta){
   _lsSave(traineesArr, syllabus, courseMeta, savedAt);
   try {
     if(!_sb) return;
+    // Strip photo field to keep payload small (photos stay in localStorage only)
+    const traineesNoPhoto = traineesArr.map(t=>{ const {photo,...rest}=t; return rest; });
     const {error} = await _sb.from('trainees')
-      .upsert({id:0, data:{trainees:traineesArr, syllabus, courseMeta, savedAt}});
+      .upsert({id:0, data:{trainees:traineesNoPhoto, syllabus, courseMeta, savedAt}});
     if(error) throw new Error(error.message);
   } catch(e){
     console.warn('Supabase save failed (saved locally):', e.message);
@@ -1505,8 +1520,10 @@ function saveTraineeOwnPhoto(traineeId){
   reader.readAsDataURL(file);
 }
 
-function saveMyExpectations(traineeId){
+async function saveMyExpectations(traineeId){
   if(currentUser.role!=='trainee'||currentUser.traineeId!==traineeId) return;
+  const btn = document.querySelector(`[onclick="saveMyExpectations(${traineeId})"]`);
+  if(btn){ btn.disabled=true; btn.textContent='שומר...'; }
   const ex = {
     theory:{},
     practical:{},
@@ -1516,8 +1533,25 @@ function saveMyExpectations(traineeId){
   };
   document.querySelectorAll('[data-exp-theory]').forEach(el=>{ ex.theory[el.dataset.expTheory]=el.value; });
   document.querySelectorAll('[data-exp-pract]').forEach(el=>{ ex.practical[el.dataset.expPract]=el.value; });
-  updateTrainee(traineeId,{traineeExpectations:ex});
-  showToast('הציפיות נשמרו ✓','success');
+  const data = getData();
+  const idx = data.findIndex(t=>t.id===traineeId);
+  if(idx>=0){
+    data[idx]={...data[idx], traineeExpectations:ex};
+    _dataCache=data;
+    const savedAt=Date.now();
+    _lsSave(data,_syllabusCache,_courseMeta,savedAt);
+    let sbOk=false;
+    if(_sb){
+      try{
+        const traineesNoPhoto=data.map(t=>{ const {photo,...rest}=t; return rest; });
+        const {error}=await _sb.from('trainees').upsert({id:0,data:{trainees:traineesNoPhoto,syllabus:_syllabusCache,courseMeta:_courseMeta,savedAt}});
+        sbOk=!error;
+        if(error) console.warn('Supabase save error:',error.message);
+      }catch(e){ console.warn('Supabase save failed:',e.message); }
+    }
+    showToast(sbOk?'הציפיות נשמרו ✓':'הציפיות נשמרו מקומית (ללא סנכרון)','success');
+  }
+  if(btn){ btn.disabled=false; btn.textContent='💾 שמור ציפיות'; }
 }
 
 function renderTraineeDashboard(t){
