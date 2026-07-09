@@ -4417,6 +4417,10 @@ async function confirmImport(){
   const savedTheme=localStorage.getItem('ir_theme');
   if(savedTheme==='dark'){ isDark=true; document.documentElement.setAttribute('data-theme','dark'); }
   else { isDark=false; document.documentElement.setAttribute('data-theme','light'); }
+
+  // Pre-load data before login screen so trainee users exist in ir_users
+  if(!_dataCache) _dataCache = await loadDataFromSupabase();
+
   const session=localStorage.getItem('ir_session');
   if(session){
     try{
