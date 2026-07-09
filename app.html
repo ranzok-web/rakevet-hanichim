@@ -1724,6 +1724,27 @@ function renderTabEval(t, edit, canEdit){
       ${e?`<textarea class="edit-input" data-field="personalGoals" style="min-height:90px">${t.personalGoals||''}</textarea>`
         :`<div class="field-val multiline ${!t.personalGoals?'empty':''}">${t.personalGoals||'לא הוזן עדיין'}</div>`}
     </div>
+    ${(()=>{
+      const ex=t.traineeExpectations||{};
+      const hasAny = ex.courseText||ex.instructorsText||ex.selfText;
+      if(!hasAny) return '';
+      return `<div class="divider"></div>
+    <div style="font-size:14px;font-weight:700;color:var(--primary-light);margin-bottom:12px">✍️ ציפיות החניך</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">מהקורס</div>
+        <div class="field-val multiline ${!ex.courseText?'empty':''}">${ex.courseText||'—'}</div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">מהמדריכים</div>
+        <div class="field-val multiline ${!ex.instructorsText?'empty':''}">${ex.instructorsText||'—'}</div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">מעצמי</div>
+        <div class="field-val multiline ${!ex.selfText?'empty':''}">${ex.selfText||'—'}</div>
+      </div>
+    </div>`;
+    })()}
   </div>`;
 }
 
