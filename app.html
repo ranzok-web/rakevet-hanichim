@@ -805,15 +805,35 @@ async function loadDataFromSupabase(){
     else source = (remote.savedAt||0) >= (ls.savedAt||0) ? remote : ls;
   } else source = remote || ls;
   if(source){
-    // Merge photos from localStorage (photos are not stored in Supabase to save space)
     let mergedTrainees = source.trainees||[];
-    if(source===remote && ls && ls.trainees){
-      const lsPhotos={};
-      (ls.trainees||[]).forEach(t=>{ if(t.photo) lsPhotos[t.id]=t.photo; });
-      mergedTrainees = mergedTrainees.map(t=>lsPhotos[t.id]?{...t,photo:lsPhotos[t.id]}:t);
+    // Always merge local photos AND expectations into remote data (local fields take priority if remote is missing them)
+    if(ls && ls.trainees && ls.trainees.length > 0){
+      const lsMap={};
+      ls.trainees.forEach(t=>{ lsMap[t.id]=t; });
+      mergedTrainees = mergedTrainees.map(t=>{
+        const local=lsMap[t.id];
+        if(!local) return t;
+        return {
+          ...t,
+          photo: t.photo||local.photo||undefined,
+          traineeExpectations: t.traineeExpectations||local.traineeExpectations||undefined,
+        };
+      });
     }
     _lsSave(mergedTrainees, source.syllabus||null, source.courseMeta||null, source.savedAt);
     source = {...source, trainees: mergedTrainees};
+    // If local data added photos/expectations that remote was missing — push merged back to Supabase
+    const hadLocalMerge = mergedTrainees.some((t,i)=>{
+      const orig=(source.trainees||[])[i];
+      return orig && ((!orig.photo && t.photo)||(!orig.traineeExpectations && t.traineeExpectations));
+    });
+    if(hadLocalMerge && _sb){
+      const noPhoto=mergedTrainees.map(t=>{const{photo,...r}=t;return r;});
+      _sb.from('trainees').upsert({id:0,data:{trainees:noPhoto,syllabus:source.syllabus,courseMeta:source.courseMeta,savedAt:source.savedAt}}).then(({error})=>{
+        if(error) console.warn('Auto-merge push failed:',error.message);
+        else console.log('Auto-merged local data pushed to Supabase');
+      });
+    }
   }
   if(source){
     _syllabusCache = source.syllabus || null;
@@ -1523,6 +1543,23 @@ function saveTraineeOwnPhoto(traineeId){
   reader.readAsDataURL(file);
 }
 
+async function pushLocalDataToCloud(traineeId){
+  const ls=_lsLoad();
+  if(!ls||!ls.trainees) return showToast('אין נתונים מקומיים לשחזר','error');
+  const lsT=ls.trainees.find(t=>t.id===traineeId);
+  if(!lsT||(!(lsT.photo)&&!(lsT.traineeExpectations))) return showToast('אין נתונים מקומיים לשחזר','error');
+  const data=getData();
+  const idx=data.findIndex(t=>t.id===traineeId);
+  if(idx<0) return showToast('חניך לא נמצא','error');
+  if(lsT.photo) data[idx].photo=lsT.photo;
+  if(lsT.traineeExpectations) data[idx].traineeExpectations=lsT.traineeExpectations;
+  _dataCache=data;
+  _lsSave(data,_syllabusCache,_courseMeta,Date.now());
+  await saveAllToSupabase(data,_syllabusCache,_courseMeta);
+  showToast('הנתונים שוחזרו לענן ✓','success');
+  _rerender();
+}
+
 async function saveMyExpectations(traineeId){
   if(currentUser.role!=='trainee'||currentUser.traineeId!==traineeId) return;
   const btn = document.querySelector(`[onclick="saveMyExpectations(${traineeId})"]`);
@@ -1646,6 +1683,18 @@ function renderTraineeDashboard(t){
   </style>
   <div class="td-dash">
 
+    <!-- RECOVERY BANNER -->
+    ${(()=>{
+      const ls=_lsLoad();
+      const lsT=(ls?.trainees||[]).find(x=>x.id===id);
+      const hasLocal=lsT&&(lsT.traineeExpectations||lsT.photo);
+      if(!hasLocal) return '';
+      return `<div style="background:rgba(255,87,34,.12);border:1.5px solid var(--accent);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px">
+        <span style="font-size:20px">📤</span>
+        <div style="flex:1;font-size:13px;color:var(--text)">נמצאו נתונים שמורים במכשיר זה (תמונה / ציפיות) שעדיין לא סונכרנו לענן.</div>
+        <button class="btn btn-primary btn-sm" onclick="pushLocalDataToCloud(${id})">שחזר לענן</button>
+      </div>`;
+    })()}
     <!-- HERO -->
     <div class="card td-hero">
       <div class="td-photo-area">
