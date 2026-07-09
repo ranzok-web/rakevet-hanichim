@@ -774,8 +774,8 @@ let isDark = false;
 const LS_KEY = 'ir_app_data';
 const LS_VERSION = 3; // bump when storage format changes; old data auto-discarded on load
 
-function _lsSave(traineesArr, syllabus, courseMeta){
-  try { localStorage.setItem(LS_KEY, JSON.stringify({v:LS_VERSION, trainees:traineesArr, syllabus, courseMeta, savedAt:Date.now()})); } catch(e){}
+function _lsSave(traineesArr, syllabus, courseMeta, savedAt){
+  try { localStorage.setItem(LS_KEY, JSON.stringify({v:LS_VERSION, trainees:traineesArr, syllabus, courseMeta, savedAt:savedAt||Date.now()})); } catch(e){}
 }
 function _lsLoad(){
   try {
@@ -786,21 +786,23 @@ function _lsLoad(){
 }
 
 async function loadDataFromSupabase(){
-  // Try localStorage first (fast). If empty, fall back to Supabase (cross-device sync).
-  let ls = _lsLoad();
-  if(!ls && _sb){
+  // Supabase = source of truth. localStorage = offline cache.
+  let remote = null;
+  if(_sb){
     try {
       const {data, error} = await _sb.from('trainees').select('data').eq('id',0).single();
-      if(!error && data?.data){
-        const remote = data.data;
-        // Save to localStorage so next load is instant
-        _lsSave(remote.trainees||[], remote.syllabus||null, remote.courseMeta||null);
-        ls = {trainees: remote.trainees||[], syllabus: remote.syllabus||null, courseMeta: remote.courseMeta||null};
-        console.log('Loaded data from Supabase (remote sync)');
-      }
-    } catch(e){ console.warn('Supabase load failed:', e.message); }
+      if(!error && data?.data) remote = data.data;
+    } catch(e){ console.warn('Supabase load failed, using local cache:', e.message); }
   }
-  if(ls){
+  const ls = _lsLoad();
+  // Use whichever is newer (by savedAt timestamp)
+  let source = null;
+  if(remote && ls) source = (remote.savedAt||0) >= (ls.savedAt||0) ? remote : ls;
+  else source = remote || ls;
+  if(source){
+    _lsSave(source.trainees||[], source.syllabus||null, source.courseMeta||null, source.savedAt);
+  }
+  if(source){
     _syllabusCache = ls.syllabus || null;
     _courseMeta    = ls.courseMeta || null;
     const arr = ls.trainees;
@@ -833,15 +835,15 @@ async function loadDataFromSupabase(){
 
 async function saveAllToSupabase(traineesArr, syllabus, courseMeta){
   if(courseMeta === undefined) courseMeta = _courseMeta;
-  _lsSave(traineesArr, syllabus, courseMeta); // always save locally first
+  const savedAt = Date.now();
+  _lsSave(traineesArr, syllabus, courseMeta, savedAt);
   try {
     if(!_sb) return;
     const {error} = await _sb.from('trainees')
-      .upsert({id:0, data:{trainees:traineesArr, syllabus, courseMeta}});
+      .upsert({id:0, data:{trainees:traineesArr, syllabus, courseMeta, savedAt}});
     if(error) throw new Error(error.message);
   } catch(e){
     console.warn('Supabase save failed (saved locally):', e.message);
-    // No toast — LS save already succeeded; Supabase unavailability shown at load time
   }
 }
 
@@ -944,8 +946,23 @@ function refreshCurrentView(){
 }
 
 function startRealtime(){
-  // Realtime disabled — localStorage is the primary source of truth.
-  // Supabase realtime events were overwriting in-memory data with stale records.
+  if(!_sb) return;
+  try {
+    _sb.channel('app-sync')
+      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'trainees', filter:'id=eq.0'}, payload => {
+        const remote = payload.new?.data;
+        if(!remote) return;
+        const localSavedAt = _lsLoad()?.savedAt || 0;
+        if((remote.savedAt||0) <= localSavedAt) return; // already have this version or newer
+        _dataCache     = remote.trainees   || [];
+        _syllabusCache = remote.syllabus   || null;
+        _courseMeta    = remote.courseMeta || null;
+        _lsSave(_dataCache, _syllabusCache, _courseMeta, remote.savedAt);
+        _rerender();
+        showToast('הנתונים עודכנו 🔄', 'info');
+      })
+      .subscribe();
+  } catch(e){ console.warn('Realtime subscription failed:', e.message); }
 }
 
 // ============================================================
