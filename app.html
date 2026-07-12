@@ -779,13 +779,31 @@ let isDark = false;
 const LS_KEY = 'ir_app_data';
 const LS_VERSION = 3; // bump when storage format changes; old data auto-discarded on load
 
+function _lsSavePhoto(traineeId, photoData){
+  try {
+    if(photoData) localStorage.setItem('ir_photo_'+traineeId, photoData);
+    else localStorage.removeItem('ir_photo_'+traineeId);
+  } catch(e){ console.warn('Photo save failed (storage full?):', e.message); }
+}
+function _lsLoadPhoto(traineeId){
+  try { return localStorage.getItem('ir_photo_'+traineeId) || undefined; } catch(e){ return undefined; }
+}
+
 function _lsSave(traineesArr, syllabus, courseMeta, savedAt){
-  try { localStorage.setItem(LS_KEY, JSON.stringify({v:LS_VERSION, trainees:traineesArr, syllabus, courseMeta, savedAt:savedAt||Date.now()})); } catch(e){}
+  // Strip photos from main key — photos stored separately per trainee
+  const noPhoto = traineesArr.map(t => { const {photo, ...rest} = t; return rest; });
+  // Persist any photos that are in the array to their own keys
+  traineesArr.forEach(t => { if(t.photo !== undefined) _lsSavePhoto(t.id, t.photo); });
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({v:LS_VERSION, trainees:noPhoto, syllabus, courseMeta, savedAt:savedAt||Date.now()}));
+  } catch(e){ console.warn('localStorage save failed:', e.message); }
 }
 function _lsLoad(){
   try {
     const d = JSON.parse(localStorage.getItem(LS_KEY)||'null');
     if(!d || d.v !== LS_VERSION) return null; // stale / old-format data → discard
+    // Re-attach photos from individual keys
+    if(d.trainees) d.trainees = d.trainees.map(t => ({...t, photo: _lsLoadPhoto(t.id)}));
     return d;
   } catch(e){ return null; }
 }
