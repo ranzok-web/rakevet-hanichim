@@ -820,43 +820,24 @@ async function loadDataFromSupabase(){
   const ls = _lsLoad();
   // Use whichever is newer (by savedAt timestamp)
   let source = null;
-  // Never use remote if it has no trainees but local does
-  if(remote && ls){
-    const remoteHasData = (remote.trainees||[]).length > 0;
-    const lsHasData = (ls.trainees||[]).length > 0;
-    if(!remoteHasData && lsHasData) source = ls;
-    else source = (remote.savedAt||0) >= (ls.savedAt||0) ? remote : ls;
-  } else source = remote || ls;
+  // Supabase is always source of truth when it has trainees.
+  // localStorage is only a fallback (offline / Supabase unreachable).
+  if(remote && (remote.trainees||[]).length > 0){
+    source = remote;
+  } else if(ls && (ls.trainees||[]).length > 0){
+    source = ls;
+  } else {
+    source = remote || ls;
+  }
   if(source){
     let mergedTrainees = source.trainees||[];
-    // Always merge local photos AND expectations into remote data (local fields take priority if remote is missing them)
-    if(ls && ls.trainees && ls.trainees.length > 0){
-      const lsMap={};
-      ls.trainees.forEach(t=>{ lsMap[t.id]=t; });
-      mergedTrainees = mergedTrainees.map(t=>{
-        const local=lsMap[t.id];
-        if(!local) return t;
-        return {
-          ...t,
-          photo: t.photo||local.photo||undefined,
-          traineeExpectations: t.traineeExpectations||local.traineeExpectations||undefined,
-        };
-      });
-    }
+    // Merge photos from localStorage individual keys (ir_photo_N) — they may be higher-res than remote
+    mergedTrainees = mergedTrainees.map(t=>({
+      ...t,
+      photo: _lsLoadPhoto(t.id) || t.photo || undefined
+    }));
     _lsSave(mergedTrainees, source.syllabus||null, source.courseMeta||null, source.savedAt);
     source = {...source, trainees: mergedTrainees};
-    // If local data added photos/expectations that remote was missing — push merged back to Supabase
-    const hadLocalMerge = mergedTrainees.some((t,i)=>{
-      const orig=(source.trainees||[])[i];
-      return orig && ((!orig.photo && t.photo)||(!orig.traineeExpectations && t.traineeExpectations));
-    });
-    if(hadLocalMerge && _sb){
-      const noPhoto=mergedTrainees.map(t=>{const{photo,...r}=t;return r;});
-      _sb.from('trainees').upsert({id:0,data:{trainees:noPhoto,syllabus:source.syllabus,courseMeta:source.courseMeta,savedAt:source.savedAt}}).then(({error})=>{
-        if(error) console.warn('Auto-merge push failed:',error.message);
-        else console.log('Auto-merged local data pushed to Supabase');
-      });
-    }
   }
   if(source){
     _syllabusCache = source.syllabus || null;
@@ -893,17 +874,62 @@ async function loadDataFromSupabase(){
   return [];
 }
 
+// Compress a dataURL image to max 300px JPEG ~10-20KB
+function compressPhoto(dataUrl){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>{
+      const MAX=300;
+      let w=img.width, h=img.height;
+      if(w>MAX||h>MAX){ if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;} }
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      resolve(c.toDataURL('image/jpeg',0.72));
+    };
+    img.onerror=()=>resolve(dataUrl);
+    img.src=dataUrl;
+  });
+}
+
 async function saveAllToSupabase(traineesArr, syllabus, courseMeta){
   if(courseMeta === undefined) courseMeta = _courseMeta;
   const savedAt = Date.now();
   _lsSave(traineesArr, syllabus, courseMeta, savedAt);
   try {
     if(!_sb) return;
-    // Strip photo field to keep payload small (photos stay in localStorage only)
-    const traineesNoPhoto = traineesArr.map(t=>{ const {photo,...rest}=t; return rest; });
+    // Fetch latest remote to preserve trainee-owned fields (expectations) set by other devices
+    let latestRemote = null;
+    try {
+      const {data} = await _sb.from('trainees').select('data').eq('id',0).single();
+      if(data?.data?.trainees) latestRemote = data.data.trainees;
+    } catch(e){}
+    // Merge: keep traineeExpectations from remote if local doesn't have them
+    let merged = traineesArr;
+    if(latestRemote){
+      const remoteMap={};
+      latestRemote.forEach(t=>{ remoteMap[t.id]=t; });
+      merged = traineesArr.map(t=>{
+        const r=remoteMap[t.id];
+        if(!r) return t;
+        return {...t,
+          traineeExpectations: t.traineeExpectations || r.traineeExpectations || undefined,
+          photo: t.photo || r.photo || undefined
+        };
+      });
+    }
+    // Photos: compress and include (they're now small enough ~10-20KB each)
+    const traineesWithCompressed = await Promise.all(merged.map(async t=>{
+      if(!t.photo) return t;
+      // Only compress if not already small (re-compressed photos start with data:image/jpeg)
+      const compressed = t.photo.startsWith('data:image/jpeg') && t.photo.length < 30000
+        ? t.photo : await compressPhoto(t.photo);
+      return {...t, photo: compressed};
+    }));
     const {error} = await _sb.from('trainees')
-      .upsert({id:0, data:{trainees:traineesNoPhoto, syllabus, courseMeta, savedAt}});
+      .upsert({id:0, data:{trainees:traineesWithCompressed, syllabus, courseMeta, savedAt}});
     if(error) throw new Error(error.message);
+    // Update cache with compressed photos
+    traineesWithCompressed.forEach(t=>{ if(t.photo) _lsSavePhoto(t.id, t.photo); });
   } catch(e){
     console.warn('Supabase save failed (saved locally):', e.message);
   }
